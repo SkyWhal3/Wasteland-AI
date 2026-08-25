@@ -236,9 +236,12 @@ def list_serial_ports(verbose: bool = True) -> list:
     ports = sorted(list_ports.comports(), key=lambda p: p.device)
     if verbose:
         if not ports:
-            print("No serial ports at all. Check: is the USB cable a DATA cable "
-                  "(many are charge-only)? Windows may also need the CP210x or "
-                  "CH340/CH9102 driver - look for an unknown device in Device Manager.")
+            print("No serial ports at all. First suspect: the USB cable - many are "
+                  "charge-only, and a charge-only cable powers the board up while "
+                  "showing you nothing. ESP32-S3 boards (Heltec V4, T-Deck) use "
+                  "native USB and need NO driver on Windows 10/11; boards with a "
+                  "bridge chip may need the CP210x or CH340/CH9102 driver - an "
+                  "unknown device in Device Manager is the tell.")
         for p in ports:
             hint = KNOWN_USB_VIDS.get(p.vid or 0, "")
             print(f"  {p.device}  {p.description}" + (f"  <- {hint} (likely a dev board)" if hint else ""))
