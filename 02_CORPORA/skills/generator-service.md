@@ -42,6 +42,13 @@ If the machine is not on that list, the procedures below still apply — they
 are engine fundamentals. **The model-specific numbers do not.** Jet, gap,
 torque, capacity, clearance: from the document or not at all.
 
+**Clone engines specifically** (Predator, Champion, and most "168F/170F"
+units): the Honda GX160 service manual on this node is often the best
+procedural reference in existence for them. **Use its procedures. Do NOT use
+its numbers** until confirmed against that machine's own documentation or data
+plate. A clone is dimensionally close, not identical — and "close" is exactly
+the gap a wrong torque value falls into.
+
 ## Won't start — in this order
 
 **1. THE OIL SENSOR. Check this before touching anything else.**
