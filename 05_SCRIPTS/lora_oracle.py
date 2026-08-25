@@ -27,6 +27,7 @@ Run:  python lora_oracle.py     (Meshtastic node on USB; kiwix-serve running)
 from __future__ import annotations
 
 import csv
+import html
 import json
 import queue
 import re
@@ -37,17 +38,17 @@ from pathlib import Path
 
 try:
     import requests
-    from pubsub import pub
-    import meshtastic
-    import meshtastic.serial_interface
 except ImportError as e:
     print(f"Missing dependency ({e}). Run: pip install -r requirements.txt",
           file=sys.stderr)
     sys.exit(2)
+# The radio libraries (meshtastic, pubsub) are imported inside main() —
+# --demo mode runs the full command pipeline with no radio and no radio deps.
 
 # ----------------------------- CONFIG ---------------------------------------
 SERIAL_PORT = None                 # None = auto-detect the Meshtastic node
 MAX_CHARS = 200                    # hard reply cap — do not raise casually
+MAX_BYTES = 230                    # the radio's real ceiling is BYTES
 RATE_LIMIT_S = 60                  # per-sender cooldown
 KIWIX_URL = "http://127.0.0.1:8080"
 KIWIX_BOOK = "wikem_en_all"        # must match a book kiwix-serve is serving
@@ -86,9 +87,15 @@ MY_NUM: int | None = None           # our node number, set in main()
 
 
 def clip(s: str) -> str:
-    """The one non-negotiable function in this file."""
+    """The one non-negotiable function in this file. Caps by CHARACTERS for
+    humans and by UTF-8 BYTES for the radio — Meshtastic's payload limit is
+    bytes, and '°' is two of them."""
     s = " ".join(s.split())                       # collapse whitespace
-    return s if len(s) <= MAX_CHARS else s[:MAX_CHARS - 1] + "…"
+    if len(s) > MAX_CHARS:
+        s = s[:MAX_CHARS - 1] + "…"
+    while len(s.encode("utf-8")) > MAX_BYTES:
+        s = s[:-2] + "…"
+    return s
 
 
 def log(line: str) -> None:
@@ -116,6 +123,8 @@ def cmd_power(_arg: str) -> str:
     except (OSError, json.JSONDecodeError):
         return "POWER: no data (is power_monitor.py running?)"
     parts = [f"BAND {d.get('band', '?')}"]
+    if d.get("demo"):
+        parts.insert(0, "DEMO")          # synthetic telemetry, say so
     if d.get("batt_V") is not None:
         parts.append(f"BAT {d['batt_V']}V")
     if d.get("soc_pct") is not None:
@@ -135,28 +144,71 @@ def cmd_power(_arg: str) -> str:
     return " | ".join(parts)
 
 
-def _strip_html(html: str) -> str:
-    text = re.sub(r"<script.*?</script>|<style.*?</style>", " ", html, flags=re.S)
+def _strip_html(markup: str) -> str:
+    text = re.sub(r"<script.*?</script>|<style.*?</style>", " ", markup, flags=re.S)
     text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)        # &lt;35&#176;C -> <35°C (after tag strip)
     return " ".join(text.split())
 
 
-def _kiwix_article_html(path: str) -> str | None:
+_BOOK_CACHE: str | None = None
+
+
+def _kiwix_book() -> str:
+    """Return a book name the server ACTUALLY serves.
+
+    The #1 predicted support issue, confirmed against a live kiwix-serve
+    3.8.1: URL book names are the ZIM filename stem (e.g.
+    'wikem_en_all_maxi_2026-07'), NOT the catalog name ('wikem_en_all') and
+    not whatever a doc said last year. So: try the configured KIWIX_BOOK,
+    and if the server doesn't know it, read the server's own catalog for
+    its /content/<name> links, prefer a wikem-ish one, probe it, cache it.
+    """
+    global _BOOK_CACHE
+    if _BOOK_CACHE:
+        return _BOOK_CACHE
+
+    def probe(name: str) -> bool:
+        try:
+            r = requests.get(f"{KIWIX_URL}/suggest",
+                             params={"content": name, "term": "a"}, timeout=5)
+            return r.ok
+        except requests.RequestException:
+            return False
+
+    if probe(KIWIX_BOOK):
+        _BOOK_CACHE = KIWIX_BOOK
+        return _BOOK_CACHE
+    try:
+        cat = requests.get(f"{KIWIX_URL}/catalog/v2/entries", timeout=5).text
+    except requests.RequestException:
+        return KIWIX_BOOK              # server unreachable; caller reports it
+    names = re.findall(r'href="/content/([^"/]+)"', cat)
+    names.sort(key=lambda n: "wikem" not in n.lower())    # wikem-ish first
+    for name in names:
+        if probe(name):
+            log(f"KIWIX_BOOK '{KIWIX_BOOK}' not served; auto-discovered '{name}'")
+            _BOOK_CACHE = name
+            return name
+    return KIWIX_BOOK
+
+
+def _kiwix_article_html(book: str, path: str) -> str | None:
     """Fetch an article's raw HTML from kiwix-serve.
 
-    The suggestion 'path' is relative to the book (e.g. "A/Dehydration").
-    Current kiwix-serve serves content at /content/<book>/<path>; older
-    builds used /<book>/<path>. Try both so one script spans versions —
-    this is the known-fragile seam, flagged in the README.
+    The suggestion 'path' is relative to the book. Current kiwix-serve
+    serves content at /content/<book>/<path> (verified live on 3.8.1);
+    older builds used /<book>/<path>. Try both so one script spans versions.
     """
-    for url in (f"{KIWIX_URL}/content/{KIWIX_BOOK}/{path}",
-                f"{KIWIX_URL}/{KIWIX_BOOK}/{path}"):
+    for url in (f"{KIWIX_URL}/content/{book}/{path}",
+                f"{KIWIX_URL}/{book}/{path}"):
         try:
             r = requests.get(url, timeout=10)
         except requests.RequestException:
             return None
         if r.ok:
-            return r.text
+            r.encoding = "utf-8"      # ZIM HTML is UTF-8; don't let a missing
+            return r.text             # charset header mojibake the degrees
     return None
 
 
@@ -166,9 +218,10 @@ def cmd_med(query: str) -> str:
     No language model is involved in this path, by design (manifest §9)."""
     if not query:
         return "Usage: ?med <topic>   e.g. ?med tourniquet"
+    book = _kiwix_book()
     try:
         r = requests.get(f"{KIWIX_URL}/suggest",
-                         params={"content": KIWIX_BOOK, "term": query},
+                         params={"content": book, "term": query},
                          timeout=10)
         r.raise_for_status()
         suggestions = r.json()
@@ -185,7 +238,7 @@ def cmd_med(query: str) -> str:
     # (we are NOT sending HTML over a 200-char radio message).
     title = hits[0].get("value") or re.sub(r"<[^>]+>", "",
                                            hits[0].get("label", query))
-    html = _kiwix_article_html(hits[0]["path"])
+    html = _kiwix_article_html(book, hits[0]["path"])
     snippet = ""
     if html:
         snippet = _strip_html(html)
@@ -289,8 +342,42 @@ def on_receive(packet, interface):  # pubsub callback signature — names matter
         log(f"ERROR in receive callback: {e}")      # bad packet is useless
 
 
+def demo_repl():
+    """The Oracle at your keyboard: REAL lookups (kiwix, inventory, power
+    telemetry), no radio required. This runs the exact code the mesh path
+    runs — including the 200-char clip — so it doubles as the no-hardware
+    test for the kiwix seam. QUICKSTART Levels 1–2 use this."""
+    print("DEMO MODE — no radio, real lookups, same 200-char cap.")
+    print("Try:  ?help   ?power   ?med tourniquet   ?find sx1262   (Ctrl-C quits)")
+    while True:
+        try:
+            text = input("?> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye.")
+            return
+        if not text:
+            continue
+        if not text.startswith("?"):
+            text = "?" + text            # be forgiving at the keyboard
+        reply = clip(handle(text))
+        print(f"[{len(reply)} chars] {reply}")
+
+
 def main():
     global MY_NUM
+    if "--demo" in sys.argv:
+        demo_repl()
+        return
+
+    try:
+        from pubsub import pub
+        import meshtastic.serial_interface
+    except ImportError as e:
+        print(f"Missing radio dependency ({e}). "
+              f"Run: pip install -r requirements.txt "
+              f"(or try --demo, which needs no radio)", file=sys.stderr)
+        sys.exit(2)
+
     print("Connecting to Meshtastic node...")
     try:
         iface = (meshtastic.serial_interface.SerialInterface(devPath=SERIAL_PORT)

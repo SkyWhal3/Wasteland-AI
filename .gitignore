@@ -48,6 +48,7 @@ venv/
 
 # Script runtime output (regenerated constantly; logs can reveal patterns)
 power_log.csv
+power_log_demo.csv
 latest.json
 oracle.log
 checksums.csv

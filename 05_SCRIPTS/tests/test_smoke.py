@@ -19,11 +19,16 @@ import power_monitor        # noqa: E402,F401
 import safety_router        # noqa: E402
 import verify_checksums     # noqa: E402,F401
 
+# The oracle imports its radio deps lazily (so --demo needs no radio libs);
+# prove the dependency still installs and imports for the real path:
+import meshtastic.serial_interface   # noqa: E402,F401
+
 with tempfile.TemporaryDirectory() as td:
     tmp = Path(td)
 
-    # clip(): the 200-char radio cap holds
+    # clip(): the 200-char radio cap holds — in CHARACTERS and in BYTES
     assert len(lora_oracle.clip("x " * 300)) == 200
+    assert len(lora_oracle.clip("°" * 300).encode("utf-8")) <= 230
 
     # router: caliber+intent fences; caliber alone stays free
     d = safety_router.route("what's a safe 9mm load?")

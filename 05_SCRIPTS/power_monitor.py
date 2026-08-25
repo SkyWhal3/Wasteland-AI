@@ -182,6 +182,29 @@ def to_record(fields: dict) -> dict:
     return rec
 
 
+# ------------------------------- demo mode ----------------------------------
+
+def demo_fields():
+    """Synthetic frames for --demo: no cable required. A slow fake sun rises
+    and sets so the band logic, CSV log, and latest.json all do something
+    watchable. Labeled DEMO everywhere it lands — synthetic telemetry that
+    could pass for real would be worse than none."""
+    import math
+    import random
+    t = 0
+    while True:
+        t += 1
+        pv = max(0.0, 220 * math.sin(t / 40)) + random.uniform(-8, 8)
+        pv = max(0.0, pv)
+        v = 13.10 + 0.25 * math.sin(t / 90) + random.uniform(-0.02, 0.02)
+        amps = (pv / v) * 0.9 if pv > 5 else 0.0
+        yield {"V": str(int(v * 1000)), "I": str(int(amps * 1000)),
+               "VPV": "36500" if pv > 5 else "800",
+               "PPV": str(int(pv)),
+               "CS": "3" if pv > 5 else "0", "ERR": "0", "H20": "142"}
+        time.sleep(1)
+
+
 # ------------------------------ serial plumbing -----------------------------
 
 def find_port() -> str:
@@ -282,23 +305,32 @@ def main():
             print("No serial ports found.")
         return
 
-    new_csv = not LOG_CSV.exists()
+    demo = "--demo" in sys.argv
+    log_path = Path("power_log_demo.csv") if demo else LOG_CSV
+    new_csv = not log_path.exists()
     band = "UNKNOWN"            # honest until the first trustworthy reading
     soc_warned = False
     last_log = 0.0
     err_warned = ""
 
-    with open(LOG_CSV, "a", newline="", encoding="utf-8") as f:
+    with open(log_path, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if new_csv:
             w.writerow(["utc", "batt_V", "batt_A", "pv_V", "pv_W", "soc_pct",
                         "yield_today_kWh", "band", "charge_state", "error"])
 
         while True:                              # reconnect loop
-            port = SERIAL_PORT or find_port()
-            print(f"Reading VE.Direct on {port} @ {BAUD} baud. Ctrl-C to stop.")
+            if demo:
+                print("DEMO MODE — synthetic solar data, no cable needed.\n"
+                      f"Logging to {log_path}; latest.json is tagged "
+                      f"\"demo\": true. Ctrl-C to stop.")
+                source = demo_fields()
+            else:
+                port = SERIAL_PORT or find_port()
+                print(f"Reading VE.Direct on {port} @ {BAUD} baud. Ctrl-C to stop.")
+                source = frames_from_bytes(serial_chunks(port))
             try:
-                for fields in frames_from_bytes(serial_chunks(port)):
+                for fields in source:
                     rec = to_record(fields)
 
                     if rec.get("soc_pct") is None and not soc_warned:
@@ -327,8 +359,11 @@ def main():
                                     rec.get("soc_pct"), rec.get("yield_today_kWh"),
                                     band, cs, err])
                         f.flush()
-                        write_latest({"utc": stamp, "band": band,
-                                      "charge_state": cs, "error": err, **rec})
+                        snapshot = {"utc": stamp, "band": band,
+                                    "charge_state": cs, "error": err, **rec}
+                        if demo:
+                            snapshot["demo"] = True
+                        write_latest(snapshot)
                         print(f"{stamp}  batt {rec.get('batt_V', '?')}V  "
                               f"pv {rec.get('pv_W', '?')}W  {cs or '-'}  band {band}")
             except serial.SerialException as e:

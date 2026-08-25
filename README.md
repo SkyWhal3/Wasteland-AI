@@ -36,6 +36,11 @@ No internet, no cloud, no login server — a Raspberry Pi on a battery, serving:
 - **From miles away, no infrastructure** — DM the node `?med tourniquet`
   over **Meshtastic LoRa** and get verbatim WikEM back in 200 characters
 
+![WikEM's tourniquet article served offline by kiwix-serve](00_DOCS/assets/wikem_offline.png)
+*Not a mockup: WikEM's tourniquet article served on localhost from a 375 MB
+ZIM by kiwix-serve — the `?med tourniquet` source, exactly as the radio path
+retrieves it, no internet anywhere in the loop.*
+
 **Sizes, honestly:** ~5 GB = pocket emergency copy · ~60 GB = the Pi core
 (Wikipedia + medicine + repair at 8 watts) · ~300 GB = the full library.
 This repo is the **blueprint + working, reviewed code**; the library itself
@@ -45,6 +50,20 @@ is the complete shopping list with sources and torrents.
 **Want in tonight? → [QUICKSTART.md](QUICKSTART.md)** — five minutes on any
 computer with no hardware (watch the safety router prove itself), or one
 evening for the offline-library demo that sells the whole idea.
+
+## Pick your tier — Tier A is the point
+
+Ten people starting at Tier A beat one person forever refining Tier C.
+
+| Tier | Cash | Power | What it runs | Winter honesty |
+|---|---|---|---|---|
+| **A — Garage** | $0–150 | A panel or power station you already own; salvaged battery as buffer | The Pi knowledge node, 24/7 most of the year | Browns out in a hard December — fine; it's a library, not life support |
+| **B — Value** | ~$500 | 100 Ah LiFePO4 + 200 W panel + MPPT | Knowledge node + small-model AI sessions | Survives most winters with load discipline |
+| **C — December-proof** | ~$1,500 | 200 Ah self-heating LiFePO4 + 400 W array + Victron | The full stack, incl. the on-demand 70B box | Designed against the worst month — the [MANIFEST](00_DOCS/MANIFEST.md) §1 math is this tier |
+
+If you only ever build Tier A — Pi + Kiwix + the medical ZIMs — **you
+already own the highest-value part of this entire project.** Everything
+past that is capability, not survival.
 
 ## The part worth arguing about
 
@@ -82,8 +101,8 @@ tree locally but *cannot* be committed by accident.
 | Script | What it does |
 |---|---|
 | `verify_checksums.py` | Fingerprints the archive so bit rot can't hide (Windows↔Pi portable) |
-| `power_monitor.py` | Victron VE.Direct telemetry: checksum-validated frames, CSV log, GREEN/YELLOW/RED/BLACK band |
-| `lora_oracle.py` | The mesh bot: `?power` `?med` `?find` `?ask`, DM-only, 200-char cap, rate-limited, allowlisted |
+| `power_monitor.py` | Victron VE.Direct telemetry: checksum-validated frames, CSV log, GREEN/YELLOW/RED/BLACK band. `--demo` = fake sun, real band logic |
+| `lora_oracle.py` | The mesh bot: `?power` `?med` `?find` `?ask`, DM-only, 200-char cap, rate-limited, allowlisted. `--demo` = the bot at your keyboard, no radio |
 | `safety_router.py` | Classifies every question before any model runs; `--test` is the executable contract |
 | `pi_agent.py` | Minimal agentic coding loop jailed to a scratch SSD (ships disabled — read its docstring) |
 | `make_skeleton.py` | Rebuilds the full folder tree after a bare clone |
@@ -92,11 +111,19 @@ tree locally but *cannot* be committed by accident.
 
 - Build doc adversarially reviewed by three different AI models, revised twice.
 - All four v1 scripts reviewed against library source + protocol specs and
-  fixed; the VE.Direct parser is unit-tested against synthetic frames.
-  Grab the stable snapshot from [Releases](https://github.com/SkyWhal3/Wasteland-AI/releases).
-- **Still needs cable-in-hand testing:** live VE.Direct stream, a real
-  Meshtastic node, `?med` against a running kiwix-serve (the known-fragile
-  seam — kiwix URL schemes drift between versions). That's where you come in.
+  fixed; the VE.Direct parser is unit-tested against synthetic frames; and
+  the `?med` retrieval path is **verified against a live kiwix-serve**
+  (3.8.1), including automatic book-name discovery.
+  Stable snapshot: [Releases](https://github.com/SkyWhal3/Wasteland-AI/releases).
+
+## Help wanted — first-contact missions
+
+Two code paths have never touched their hardware, and one fix wants more
+witnesses. No better first contribution exists:
+
+- [#1 — Live VE.Direct stream](https://github.com/SkyWhal3/Wasteland-AI/issues/1): plug the cable in, post real frames
+- [#2 — Meshtastic end-to-end](https://github.com/SkyWhal3/Wasteland-AI/issues/2): DM the Oracle from a second node
+- [#3 — Your kiwix version](https://github.com/SkyWhal3/Wasteland-AI/issues/3): `--demo` + kiwix-serve, five minutes, no radio
 
 **Run it. Break it. File issues.**
 

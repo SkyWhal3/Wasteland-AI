@@ -5,6 +5,31 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (later) — first library content + live ?med verification
+
+- **WikEM acquired:** `wikem_en_all_maxi_2026-07.zim` (375 MB) into
+  `02_CORPORA/kiwix_zim/`, sha256 recorded in CORPUS_INDEX same-day (§15).
+  kiwix-tools 3.8.1 (win-x86_64) into `03_SOFTWARE/kiwix/`.
+- **`?med` verified against a live kiwix-serve** — the known-fragile seam
+  closed on 3.8.1: `/content` scheme confirmed, suggest JSON exactly as
+  designed. Found and fixed live: HTML entities + mojibake in snippets
+  (`&lt;35Â°C` → `<35°C`), byte-aware `clip()` (the radio's limit is bytes,
+  not characters), and **book-name auto-discovery** — URL names are ZIM
+  filename stems (`wikem_en_all_maxi_2026-07`), not catalog names; the
+  oracle now probes the configured name and heals itself from the server's
+  own catalog.
+- **`--demo` modes:** power_monitor (synthetic sun, labeled DEMO in every
+  output) and lora_oracle (REPL — real lookups, keyboard for radio). They
+  chain: monitor demo feeds `?power` in the oracle demo. Zero-hardware
+  Tier-0 loop for QUICKSTART Level 1.
+- README: tier table (A/B/C — Tier A is the point), WikEM screenshot,
+  Help-wanted section → issues #1 #2 #3. QUICKSTART: minimum-viable node
+  shopping list + demo walkthroughs.
+- Deferred to chat-mode adjudication (per standing rule): Grok's proposed
+  MANIFEST edits (tier table into §1, softened opening) and its
+  AUTHORIZED_SENDERS default-deny proposal (open-mode-with-loud-warning
+  kept for bench UX; flag if the group disagrees).
+
 ## 2026-08-25 — repo established, code reviewed, agent layer added
 
 - Folder skeleton (§13) created at `D:\Wasteland AI`; git repo initialized

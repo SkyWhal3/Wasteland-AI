@@ -19,6 +19,8 @@ python safety_router.py "how much varget for a 168gr .308 load?"
 python verify_checksums.py build ../00_DOCS --index demo.csv
 python verify_checksums.py check ../00_DOCS --index demo.csv
 python power_monitor.py --list-ports
+python power_monitor.py --demo        # fake sun, real band logic (Ctrl-C stops)
+python lora_oracle.py --demo          # the mesh bot at your keyboard
 ```
 
 **Windows (PowerShell):**
@@ -32,6 +34,8 @@ python safety_router.py "how much varget for a 168gr .308 load?"
 python verify_checksums.py build ..\00_DOCS --index demo.csv
 python verify_checksums.py check ..\00_DOCS --index demo.csv
 python power_monitor.py --list-ports
+python power_monitor.py --demo        # fake sun, real band logic (Ctrl-C stops)
+python lora_oracle.py --demo          # the mesh bot at your keyboard
 ```
 > If `Activate.ps1` is blocked: `Set-ExecutionPolicy -Scope Process Bypass`
 > (affects this one window only), then activate again.
@@ -51,6 +55,13 @@ python tests/test_smoke.py
   same two commands at terabytes and that's the archive's immune system.
 - Every serial port on your machine, enumerated — the VE.Direct solar cable
   and the Meshtastic radio will show up right there when they arrive.
+- `--demo` on the monitor: a fake sun rises and sets so you can watch the
+  GREEN/YELLOW/RED/BLACK band logic think — synthetic data, labeled DEMO
+  everywhere it lands.
+- `--demo` on the oracle: the mesh bot with your keyboard standing in for
+  the radio — same code, same 200-char cap. **They chain:** run the monitor
+  demo in one terminal, the oracle demo in another, type `?power` — that's
+  the whole Tier-0 loop with zero hardware.
 
 ---
 
@@ -77,6 +88,13 @@ your machine, no internet required once downloaded.**
 5. Note the **book name** kiwix shows (e.g. `wikem_en_all_maxi`) — that
    exact string is what goes in `KIWIX_BOOK` in `lora_oracle.py` later.
 
+6. **Bonus — the full Oracle pipeline, no radio:** with kiwix still
+   running, `python 05_SCRIPTS/lora_oracle.py --demo`, then type
+   `?med tourniquet`. That is the exact code the radio path runs — it even
+   figures out your server's real book name by itself (URL names are
+   filename stems like `wikem_en_all_maxi_2026-07`; the script probes,
+   discovers, and logs what it picked).
+
 Then go back for `wikipedia_en_all_mini` (~5–6 GB) and feel the size of
 what fits on a fingernail of storage. The full shopping list with all
 sources: [MANIFEST.md §8](00_DOCS/MANIFEST.md).
@@ -84,6 +102,11 @@ sources: [MANIFEST.md §8](00_DOCS/MANIFEST.md).
 ---
 
 ## Level 3 — The real build: Pi + solar + radio
+
+**Minimum viable node:** Raspberry Pi 5 (8 GB) + active cooler + an NVMe
+(or just a big SD to start) + `wikipedia_en_all_mini` (~5 GB) + `wikem`
+(~0.4 GB) + the Hesperian PDFs. That's the survival core, complete.
+Everything else in this project is capability stacked on top of it.
 
 The step-by-step lives in [05_SCRIPTS/README.md](05_SCRIPTS/README.md)
 (venv, watchdog, systemd units) and the build order in
