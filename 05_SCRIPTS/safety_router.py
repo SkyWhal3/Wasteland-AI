@@ -24,7 +24,11 @@ Use standalone:
 
 Or import it:
     from safety_router import route
-    decision = route(question)   # -> Decision(route, domain, instruction)
+    decision = route(question)   # -> Decision(route, domain, instruction, skill)
+
+`decision.skill`, when set, names a procedure file in 02_CORPORA/skills/ that
+says what to ASK before answering and which document to open. A skill never
+changes a route — fenced stays fenced; it just rides along.
 
 Extend the keyword lists as you find gaps — misrouting toward MORE caution is
 free; misrouting toward less is the failure mode. Substrings match anywhere
@@ -89,6 +93,22 @@ RETRIEVAL_ONLY_DOMAINS = {
         "calcium hypochlorite", "water purif", "boil water", "pool shock",
         "giardia", "cryptosporidium", "sodis",
     ],
+    # PROVISIONAL seventh domain, added 2026-08-25. Generator CO and backfeed
+    # are life-safety (both kill people every year) and neither was cleanly
+    # covered by the six. This is a pure TIGHTENING — nothing that was fenced
+    # became unfenced. Whether §9 of the MANIFEST names this as a seventh
+    # domain or folds it into medical/electrical is the manifest owner's call.
+    "generator_safety": [
+        "carbon monoxide", "co poisoning", "co detector", "co alarm",
+        "generator in the garage", "generator in a garage", "generator indoors",
+        "generator inside", "run a generator in", "running a generator in",
+        "generator ventilation", "exhaust indoors", "exhaust in the",
+        "how far from the house", "how far from a window",
+        "backfeed", "back-feed", "back feed", "suicide cord",
+        "generator to the house", "generator into the house",
+        "generator to my house", "transfer switch", "interlock kit",
+        "dryer outlet", "plug the generator into",
+    ],
 }
 
 # Pattern fences — things plain substrings can't express safely.
@@ -111,6 +131,10 @@ ARTIFACT_TRIGGERS = [
     "spec sheet", "service manual", "torque spec", "where is my", "which bin",
     "do i have a", "in my inventory", "gpio map", "register map",
     "fuse box", "pin number", "wiring color",
+    # Answers that ARE a part number in a manual — route to the document.
+    # Jetting is the canonical invented-answer trap: plausible, specific, wrong.
+    "main jet", "jet size", "jet kit", "high altitude kit", "oil capacity",
+    "spark plug gap", "plug gap", "valve clearance", "oil type for",
 ]
 # Things that look like part numbers: SX1262, NRF52840, 74HC14, LM7805...
 PART_NUMBER_RE = re.compile(r"\b[A-Za-z]{2,4}\d{2,6}[A-Za-z0-9]*\b")
@@ -125,11 +149,35 @@ RAG_TRIGGERS = [
 ]
 
 
+# ---------------- skills: procedures for a class of question -----------------
+# A skill NEVER changes a route — it rides along with one, telling the
+# answering system what to ask first and which file to open. See
+# 02_CORPORA/skills/README.md.
+SKILL_TRIGGERS = {
+    "generator-service": [
+        "generator", "genset", "eu2000", "eu2200", "honda eu", "predator 3500",
+        "champion dual fuel", "inverter generator", "pull start", "recoil start",
+        "main jet", "high altitude kit", "carburetor", "carb bowl", "pilot jet",
+        "spark plug", "gas cap vent", "backfeed", "carbon monoxide",
+    ],
+}
+
+
+def match_skill(question: str) -> str | None:
+    """First skill whose triggers appear in the question, or None."""
+    q = question.lower()
+    for name, triggers in SKILL_TRIGGERS.items():
+        if any(t in q for t in triggers):
+            return name
+    return None
+
+
 @dataclass
 class Decision:
     route: str          # RETRIEVAL_ONLY | ARTIFACT_LOOKUP | RAG | GENERAL_MODEL
     domain: str | None  # which safety domain fired, if any
     instruction: str    # what the answering system must do
+    skill: str | None = None   # procedure file to load (02_CORPORA/skills/)
 
 
 def _fence(domain: str) -> Decision:
@@ -143,6 +191,15 @@ def _fence(domain: str) -> Decision:
 
 
 def route(question: str) -> Decision:
+    """Classify, then attach any matching skill. The skill is ADDITIVE: it
+    cannot change the route, so a fenced question stays fenced and merely
+    gains a checklist for what to ask before retrieving."""
+    decision = _classify(question)
+    decision.skill = match_skill(question)
+    return decision
+
+
+def _classify(question: str) -> Decision:
     q = question.lower()
 
     # 1) Safety fence first. Always first.
@@ -191,12 +248,25 @@ SELF_TEST = [
     ("how much bleach per gallon to purify water?",       "RETRIEVAL_ONLY"),
     ("snow load for a 12 ft rafter?",                     "RETRIEVAL_ONLY"),
     ("what is the cold-weather Voc of two panels in series?", "RETRIEVAL_ONLY"),
+    ("can I run the generator in the garage with the door open?",
+                                                          "RETRIEVAL_ONLY"),
+    ("how do I backfeed my house with a generator?",      "RETRIEVAL_ONLY"),
     ("what's the pinout of the sx1262?",                  "ARTIFACT_LOOKUP"),
     ("do i have a spare LM7805 in my inventory?",         "ARTIFACT_LOOKUP"),
     ("how do i repair a jacket zipper?",                  "RAG"),
     ("how to fix a leaky faucet?",                        "RAG"),
     ("tell me a joke about capacitors",                   "GENERAL_MODEL"),
     ("what's the best 9mm holster material?",             "GENERAL_MODEL"),
+]
+
+
+# Skills ride along with a route; these pin both.
+SKILL_TEST = [
+    ("what oil does my honda eu2000i take?",  "generator-service", "ARTIFACT_LOOKUP"),
+    ("what main jet for 10,000 ft?",          "generator-service", "ARTIFACT_LOOKUP"),
+    ("can I run the generator in the garage?", "generator-service", "RETRIEVAL_ONLY"),
+    ("why won't my predator 3500 start?",     "generator-service", "GENERAL_MODEL"),
+    ("how do i repair a jacket zipper?",      None,                "RAG"),
 ]
 
 
@@ -208,6 +278,16 @@ def run_self_test() -> int:
         if got != want:
             failures += 1
         print(f"{status}  {got:16} (want {want:16})  {question}")
+
+    print("-" * 50)
+    for question, want_skill, want_route in SKILL_TEST:
+        d = route(question)
+        ok = d.skill == want_skill and d.route == want_route
+        if not ok:
+            failures += 1
+        print(f"{'PASS' if ok else 'FAIL'}  skill={str(d.skill):18} "
+              f"{d.route:16}  {question}")
+
     print("-" * 50)
     print("ALL PASS" if failures == 0 else f"{failures} FAILURE(S)")
     return 0 if failures == 0 else 1
@@ -224,6 +304,9 @@ def main():
     d = route(q)
     print(f"QUESTION : {q}")
     print(f"ROUTE    : {d.route}" + (f"  (domain: {d.domain})" if d.domain else ""))
+    if d.skill:
+        print(f"SKILL    : {d.skill}  "
+              f"(02_CORPORA/skills/{d.skill}.md — ask its questions FIRST)")
     print(f"POLICY   : {d.instruction}")
 
 

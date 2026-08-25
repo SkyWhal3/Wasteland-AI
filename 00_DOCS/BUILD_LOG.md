@@ -5,6 +5,39 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (latest+1) — skills layer + provisional seventh fenced domain
+
+- **New corpus type: `02_CORPORA/skills/`** — procedural overlays that tell the
+  model what to ASK before answering, which document to open, and what never to
+  generate. Answers the "how does it know anything about a Honda EU2000i"
+  problem: it doesn't, and a bigger model wouldn't either — the skill makes it
+  ask which machine and open that manual instead of inventing a jet number.
+  Format spec + rules in `skills/README.md`; exemplar `generator-service.md`
+  written (won't-start triage leading with the low-oil cutoff, oil, altitude
+  jetting, CO, backfeed, load/storage).
+- Rules locked in: procedure in the skill, numbers in the manual; **pointers
+  only in the fenced domains**; the router runs first and a skill can never
+  change a route; categorical prohibitions allowed, computed values not. The
+  README states plainly that **the router is code-enforced and skills are only
+  instruction-enforced** — so anything lethal belongs in the fence, not in a
+  skill's `never_generate`.
+- **safety_router.py**: `Decision.skill` added (additive, never overrides a
+  route); `match_skill()` + `SKILL_TRIGGERS`; part-number-shaped questions
+  (main jet, jet kit, plug gap, oil capacity, valve clearance) now route to
+  ARTIFACT_LOOKUP so the answer is a filename+page rather than a prompt-level
+  hope; `SKILL_TEST` table added — 21/21 contract tests pass.
+- **PROVISIONAL seventh fenced domain `generator_safety`** (CO siting +
+  backfeeding into building wiring). Both kill people annually and neither was
+  cleanly covered by the six. Implemented as a pure tightening — nothing
+  previously fenced became unfenced. **For chat-mode adjudication:** whether
+  MANIFEST §9 names this a seventh domain or folds CO into medical and backfeed
+  into electrical. The protection is live either way.
+- Still open from earlier: MANIFEST tier-table edits, AUTHORIZED_SENDERS
+  default-deny. Collection task queued: owner's manuals for generators/inverters
+  actually in reach (EU2000i/2200i, Predator 3500, Champion dual-fuel) into
+  02_CORPORA/datasheets/power/ with INVENTORY rows — the skill needs real PDFs
+  to point at.
+
 ## 2026-08-25 (latest) — public build guide published
 
 - `OFFGRID_PUBLIC_EDITION.md` (chat-mode's group-facing build doc, until now

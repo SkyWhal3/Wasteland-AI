@@ -30,6 +30,7 @@
 !/02_CORPORA/
 /02_CORPORA/*
 !/02_CORPORA/seed_qa/
+!/02_CORPORA/skills/
 !/02_CORPORA/reference_tables/
 /02_CORPORA/reference_tables/*
 !/02_CORPORA/reference_tables/WIRING_DIAGRAMS_SOLAR.md
