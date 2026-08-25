@@ -5,6 +5,44 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (latest+4) — the generator shelf
+
+Collected for machines you might **encounter**, not only machines you own —
+the scavenge column applied to documentation. 11 manuals, ~105 MB, indexed:
+
+- **Honda EU2200i** — the camping standard and generator-service's worked
+  example. (Note in the index: the EU2000i is close but NOT identical.)
+- **Predator 3500** (two manual revisions) and **4400** — Harbor Freight,
+  the most common portable inverter sets in the US.
+- **Champion dual fuel** 3800 / 4250 / 6250 W — gasoline + propane.
+- **Cummins Onan RV** — the general RV Generator Handbook plus two operator
+  manuals. The camper-under-the-step case.
+- **Generac air-cooled standby 7/10/13/16 kW** — propane/NG home standby.
+  The abandoned-cabin case.
+
+**A truncation catch worth recording.** Three Generac downloads came back at
+exactly 8 MiB, 8 MiB and 4 MiB — powers of two, no `%%EOF` trailer. Their CDN
+truncates automated requests, and a naive `read()` reported success. Had those
+been indexed they would have looked like good manuals with valid checksums,
+and the corruption would have surfaced the day someone needed page 41. Every
+PDF is now verified for the `%PDF` header AND the `%%EOF` trailer before it is
+written; the three bad files were deleted rather than kept. Retries with
+chunked reads, Content-Length checks and curl all failed identically, so
+modern Generac 9–26 kW is logged as a **known gap** in GENERATOR_INDEX.md
+rather than papered over. The older 7–16 kW manual came through a NOAA mirror
+intact and covers the same architecture.
+
+- **NEW `generators/GENERATOR_INDEX.md`** — the coverage map, including known
+  aliases and an explicit gaps list (modern Generac, Yamaha EF, engine-level
+  manuals for Honda GX / Briggs / Kohler, vintage sets, diesel). It also
+  carries the procedure for meeting an undocumented machine: photograph the
+  data plate first, Layer 0 row the same day, get the manual while the grid
+  is up.
+- **generator-service now opens that index FIRST** and states plainly that
+  when a machine is not on the list the engine fundamentals still apply but
+  the model-specific numbers do not.
+- Bit-rot index rebuilt: 68 files in 02_CORPORA.
+
 ## 2026-08-25 (latest+3) — Layer 3 collection begins; v1.4 released
 
 - **v1.4 released** ("the skills layer"); v1.3 notes point forward. CI green.

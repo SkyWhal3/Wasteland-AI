@@ -16,8 +16,9 @@ ask_first:
   - "Is it in the inventory? Run ?find <brand> — that returns the manual path."
   - "For a no-start: when did it last run, and what fuel is in it right now?"
 open_these:
-  - 02_CORPORA/datasheets/power/<model>_owners_manual.pdf
-  - 02_CORPORA/datasheets/power/<model>_service_bulletins/   (jet kits live here)
+  - 02_CORPORA/datasheets/power/generators/GENERATOR_INDEX.md   (CHECK THIS FIRST —
+    it says whether this node holds the manual for the machine in front of you)
+  - 02_CORPORA/datasheets/power/generators/<model>_manual.pdf
   - "?find <brand>   — Layer 0: do we own one, where is it, which manual"
 never_generate:
   - jet part numbers or drill sizes
@@ -29,6 +30,17 @@ never_generate:
 fence: retrieval_only   # applies to the CO and backfeed sections ONLY
 human_verified: false
 ---
+
+## Before anything: is this machine documented here?
+
+Open `generators/GENERATOR_INDEX.md`. It lists every manual on this node and,
+just as importantly, the known gaps. Currently held: Honda EU2200i, Predator
+3500 and 4400, Champion dual-fuel (3800/4250/6250 W), Onan RV (handbook plus
+two operator manuals), and Generac air-cooled standby 7–16 kW.
+
+If the machine is not on that list, the procedures below still apply — they
+are engine fundamentals. **The model-specific numbers do not.** Jet, gap,
+torque, capacity, clearance: from the document or not at all.
 
 ## Won't start — in this order
 
