@@ -55,6 +55,8 @@ except ImportError:
     print("requests missing. Run:  pip install -r requirements.txt", file=sys.stderr)
     sys.exit(2)
 
+import context_meter
+
 # ----------------------------- CONFIG ---------------------------------------
 OLLAMA_URL = "http://127.0.0.1:11434"
 AGENT_MODEL = None            # None = disabled (safe default).
@@ -67,6 +69,14 @@ EXAMPLES_DIR = Path(__file__).resolve().parent / "agent_examples"
 MAX_STEPS = 12                # hard ceiling per task
 RUN_TIMEOUT_S = 30            # run_python wall-clock limit
 MAX_TOOL_OUTPUT = 2000        # chars of tool output fed back to the model
+AGENT_NUM_CTX = 8192          # context window to REQUEST from Ollama. Set
+                              # explicitly on purpose: Ollama's own default is
+                              # much smaller than most models support, and an
+                              # agent loop fills a window fast. Too small and
+                              # early steps get silently dropped mid-task; too
+                              # large and the KV cache eats RAM a Pi does not
+                              # have. Run context_meter.py for your real
+                              # numbers, then tune this and measure.
 MAX_FILE_BYTES = 256_000      # per-file cap: a looping model can't fill the SSD
 TRANSCRIPT = Path("agent_transcript.jsonl")   # full audit log, one JSON/line
 # ---------------------------------------------------------------------------
@@ -180,14 +190,19 @@ TOOLS = {
 
 # ------------------------------- the loop -----------------------------------
 
-def _chat(messages: list) -> str:
+def _chat(messages: list) -> tuple:
+    """Returns (content, prompt_tokens, generated_tokens). The counts come
+    from Ollama itself, so they are exact rather than estimated."""
     r = requests.post(f"{OLLAMA_URL}/api/chat",
                       json={"model": AGENT_MODEL, "messages": messages,
                             "stream": False,
-                            "options": {"temperature": 0.2}},
+                            "options": {"temperature": 0.2,
+                                        "num_ctx": AGENT_NUM_CTX}},
                       timeout=600)
     r.raise_for_status()
-    return r.json()["message"]["content"]
+    data = r.json()
+    used, made = context_meter.usage_from_response(data)
+    return data["message"]["content"], used, made
 
 
 def _extract_json(text: str) -> dict:
@@ -207,7 +222,16 @@ def _log(entry: dict) -> None:
 
 def run_task(task: str) -> None:
     AGENT_ROOT.mkdir(parents=True, exist_ok=True)
+    limits = context_meter.model_limits(AGENT_MODEL, OLLAMA_URL)
+    ctx_limit = AGENT_NUM_CTX
     print(f"Sandbox: {AGENT_ROOT}")
+    print(f"Context: requesting {context_meter.human(AGENT_NUM_CTX)}"
+          + (f" of a {context_meter.human(limits['trained'])} model"
+             if limits["trained"] else "")
+          + "   (run context_meter.py for details)")
+    if limits["trained"] and AGENT_NUM_CTX > limits["trained"]:
+        print(f"  NOTE: more than this model was trained for "
+              f"({context_meter.human(limits['trained'])}). Lower AGENT_NUM_CTX.")
     print(f"Task:    {task}\n")
     _log({"event": "task_start", "task": task, "model": AGENT_MODEL})
 
@@ -216,13 +240,31 @@ def run_task(task: str) -> None:
 
     for step in range(1, MAX_STEPS + 1):
         try:
-            content = _chat(msgs)
+            content, ctx_used, ctx_made = _chat(msgs)
         except requests.RequestException as e:
             print(f"Ollama unreachable ({e}). Is `ollama serve` running?",
                   file=sys.stderr)
             return
         msgs.append({"role": "assistant", "content": content})
-        _log({"event": "model", "step": step, "content": content})
+        _log({"event": "model", "step": step, "content": content,
+              "ctx_used": ctx_used, "ctx_limit": ctx_limit})
+
+        # Context readout every step. History accumulates fast here, and past
+        # the window Ollama drops the OLDEST messages first — which in an agent
+        # loop means the task description itself. Stop rather than continue
+        # working amnesiac.
+        total = ctx_used + ctx_made
+        print(f"      ctx {context_meter.readout(total, ctx_limit)}")
+        if ctx_limit and total >= ctx_limit * context_meter.FULL_AT:
+            print("")
+            print(f"STOPPING at step {step}: context is nearly full. Going on "
+                  f"would silently drop the start of this task, including the "
+                  f"task itself. Whatever exists so far is in {AGENT_ROOT}. "
+                  f"Either raise AGENT_NUM_CTX (watch RAM) or restart with a "
+                  f"smaller, more specific task.")
+            _log({"event": "context_stop", "step": step, "used": total,
+                  "limit": ctx_limit})
+            return
 
         try:
             action = _extract_json(content)

@@ -111,6 +111,7 @@ tree locally but *cannot* be committed by accident.
 | `lora_oracle.py` | The mesh bot: `?power` `?med` `?find` `?ask`, DM-only, 200-char cap, rate-limited, allowlisted. `--demo` = the bot at your keyboard, no radio |
 | `safety_router.py` | Classifies every question before any model runs; `--test` is the executable contract |
 | `pi_agent.py` | Minimal agentic coding loop jailed to a scratch SSD (ships disabled — read its docstring) |
+| `context_meter.py` | The model's real context window vs what Ollama actually gives it — catches silent truncation |
 | `make_skeleton.py` | Rebuilds the full folder tree after a bare clone |
 
 ## Status

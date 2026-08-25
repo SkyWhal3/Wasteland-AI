@@ -57,6 +57,8 @@ RETRIEVAL_ONLY_DOMAINS = {
         "acetaminophen", "tylenol", "aspirin", "amoxicillin", "penicillin",
         "childbirth", "pregnan", "concussion", "splint", "first aid",
         "unconscious", "choking", "hemorrhage",
+        "stitches", "laceration", "puncture", "cut on my", "deep cut",
+        "scald", "abscess", "dislocat",
     ],
     "reloading": [
         "grains of", "powder charge", "load data", "reload", "handload",
@@ -76,7 +78,7 @@ RETRIEVAL_ONLY_DOMAINS = {
         "ampacity", "wire gauge for", "awg for", "fuse size", "fuse for",
         "breaker size", "busbar", "bus bar", "wire size", "how many amps can",
         "charge voltage for", "absorption voltage", "float voltage",
-        "series or parallel panel", "string voltage", "voltage drop",
+        "series or parallel", "string voltage", "voltage drop",
         "wire run", "conductor size", "panel string", "parallel strings",
         "battery cable", "inverter cable", "charge current", "c-rate",
     ],
@@ -92,6 +94,7 @@ RETRIEVAL_ONLY_DOMAINS = {
         "water treatment dose", "iodine tablets", "contact time",
         "calcium hypochlorite", "water purif", "boil water", "pool shock",
         "giardia", "cryptosporidium", "sodis",
+        "safe to drink", "drinkable", "potable", "is this water",
     ],
     # PROVISIONAL seventh domain, added 2026-08-25. Generator CO and backfeed
     # are life-safety (both kill people every year) and neither was cleanly
@@ -153,12 +156,52 @@ RAG_TRIGGERS = [
 # A skill NEVER changes a route — it rides along with one, telling the
 # answering system what to ask first and which file to open. See
 # 02_CORPORA/skills/README.md.
+# ORDER MATTERS: first match wins, so the most specific vocabularies come
+# first and the general "nothing works" skill goes last.
 SKILL_TRIGGERS = {
+    "wound-triage": [
+        "wound", "laceration", "stitches", "suture", "deep cut", "cut on my",
+        "cut myself", "gash", "puncture", "bandage", "road rash",
+        "bleeding", "wont stop bleeding", "infected cut", "burn on",
+        "burned my", "scald",
+    ],
+    "water-source-decision": [
+        "safe to drink", "drinkable", "potable", "purify", "treat water",
+        "water treatment", "creek water", "stream water", "well water",
+        "rainwater", "snowmelt", "boil water", "water is cloudy",
+        "is this water", "filter water",
+    ],
     "generator-service": [
         "generator", "genset", "eu2000", "eu2200", "honda eu", "predator 3500",
         "champion dual fuel", "inverter generator", "pull start", "recoil start",
-        "main jet", "high altitude kit", "carburetor", "carb bowl", "pilot jet",
-        "spark plug", "gas cap vent", "backfeed", "carbon monoxide",
+        "main jet", "jet kit", "high altitude kit", "carburetor", "carb bowl",
+        "pilot jet", "spark plug", "gas cap vent", "backfeed",
+        "carbon monoxide",
+    ],
+    "radio-wont-transmit": [
+        "meshtastic", "lora", "sx1262", "heltec", "t-deck", "tdeck",
+        "wont transmit", "will not transmit", "no nodes", "mesh is down",
+        "cant see my node", "oracle not replying", "modem preset",
+    ],
+    "vehicle-wont-start": [
+        "wont crank", "no crank", "cranks but", "starter motor", "jump start",
+        "check engine", "immobiliser", "immobilizer", "my truck", "my car",
+        "alternator", "engine dies", "stalls",
+    ],
+    "charging-triage": [
+        "not charging", "wont charge", "will not charge", "no charge current",
+        "mppt error", "err 33", "low temp cutoff", "bms cutoff",
+        "state of charge", "bulk absorption", "not making power",
+    ],
+    "solar-commissioning": [
+        "wire my panels", "hook up panels", "series or parallel", "mc4",
+        "mppt", "pwm", "charge controller", "y branch", "combiner",
+        "string my panels", "commission", "solar panel",
+    ],
+    "node-dark-triage": [
+        "node is down", "node is dark", "wont boot", "will not boot",
+        "no lights", "cant ssh", "boot loop", "kiwix is down",
+        "nothing responds", "unreachable", "undervolt", "pi wont",
     ],
 }
 
@@ -266,6 +309,15 @@ SKILL_TEST = [
     ("what main jet for 10,000 ft?",          "generator-service", "ARTIFACT_LOOKUP"),
     ("can I run the generator in the garage?", "generator-service", "RETRIEVAL_ONLY"),
     ("why won't my predator 3500 start?",     "generator-service", "GENERAL_MODEL"),
+    ("should I wire my panels in series or parallel?",
+                                              "solar-commissioning", "RETRIEVAL_ONLY"),
+    ("my battery is not charging in the cold", "charging-triage",   "GENERAL_MODEL"),
+    ("my meshtastic node wont transmit",      "radio-wont-transmit", "GENERAL_MODEL"),
+    ("the node is dark, no lights at all",    "node-dark-triage",  "GENERAL_MODEL"),
+    ("my truck cranks but wont fire",         "vehicle-wont-start", "GENERAL_MODEL"),
+    ("is creek water safe to drink?",         "water-source-decision", "RETRIEVAL_ONLY"),
+    ("deep cut on my hand, does it need stitches?",
+                                              "wound-triage",      "RETRIEVAL_ONLY"),
     ("how do i repair a jacket zipper?",      None,                "RAG"),
 ]
 

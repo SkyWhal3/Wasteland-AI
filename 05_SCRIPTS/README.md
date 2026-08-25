@@ -1,6 +1,6 @@
 # OFFGRID Starter Code — Setup Guide (step by step)
 
-Six small scripts that turn the manifest into a running system:
+Seven small scripts that turn the manifest into a running system:
 
 | Script | What it does | Needs |
 |---|---|---|
@@ -9,6 +9,7 @@ Six small scripts that turn the manifest into a running system:
 | `lora_oracle.py` | The mesh bot: `?power` `?med` `?find` `?ask` over Meshtastic, 200-char cap, rate-limited | USB Meshtastic node |
 | `safety_router.py` | Classifies questions into retrieval-only / artifact-lookup / RAG / model before any AI runs (`--test` = self-check) | nothing |
 | `pi_agent.py` | Minimal coding agent, jailed to a scratch drive. **Ships disabled.** | Ollama + a coder model |
+| `context_meter.py` | Shows the model's real context window vs what Ollama actually gives it, and formats the usage readout | Ollama (for live numbers) |
 | `make_skeleton.py` | Rebuilds the full §13 folder tree after a bare clone | nothing |
 
 These are **starter examples**: commented for beginners, safe by default
@@ -139,11 +140,13 @@ Defaults are deliberately conservative:
   people's node numbers — `?power`/`?find` are occupancy-and-inventory
   intel you don't hand to strangers. See `00_DOCS/SECURITY.md`.
 
-**Known-fragile seam:** kiwix-serve's article URLs drifted across versions.
-The script tries the current scheme (`/content/<book>/<path>`) then the
-legacy one. If `?med` returns "no match" for things that exist, check the
-book name (`KIWIX_BOOK`) matches what `http://127.0.0.1:8080` shows, and
-file an issue with your kiwix-tools version — you're the test fleet.
+**Book names, and why you probably don't need to care:** in kiwix URLs a
+book is its ZIM *filename stem* (`wikem_en_all_maxi_2026-07`), not the
+catalog name (`wikem_en_all`) — the trap that 404s a first-timer. The script
+probes the configured name and, if the server doesn't serve it, reads the
+server's own catalog, picks the right one, and logs the swap. Verified
+against kiwix-tools 3.8.1. Other versions want eyes — that's
+[issue #3](https://github.com/SkyWhal3/Wasteland-AI/issues/3).
 
 **Test on a private channel/DM before this thing lives anywhere near
 LongFast. Airtime is a commons.**
@@ -160,7 +163,8 @@ python safety_router.py "what's the pinout of the sx1262?"
 # -> ARTIFACT_LOOKUP: return filename + page from the datasheet tree.
 
 python safety_router.py --test
-# -> 14 canonical routings, PASS/FAIL. Run after every keyword edit.
+# -> 28 canonical routings + skill matches, PASS/FAIL.
+#    Run after every keyword edit; add your new expectation to the table.
 ```
 
 It's a keyword classifier — extend the lists at the top as you find gaps.
@@ -188,6 +192,28 @@ drive, unprivileged user, review before promoting code out of the sandbox.
 
 The agent is for *writing code*, offline. Questions go through the router
 and the Oracle — do not wire the agent to the radio.
+
+---
+
+## 5b. context_meter.py — how full is the window?
+
+```bash
+python context_meter.py            # every model Ollama has
+python context_meter.py qwen3:4b   # one model, with the warnings
+```
+
+A model past its context window does not error — it **silently drops the
+oldest messages** and answers anyway. And Ollama's default window is much
+smaller than most models support, so a "32k model" often runs at 2k or 4k
+because nobody set `num_ctx`. This prints both numbers so you can see the gap.
+
+`pi_agent.py` uses it: it requests `AGENT_NUM_CTX` explicitly, prints
+`ctx 4736/8k 58% [#########...........]` after every step, and stops the run
+before the window overflows rather than continuing with the task description
+already dropped out of memory.
+
+Raising `num_ctx` costs RAM (the KV cache scales with it) — on a Pi that is a
+power and OOM question, so raise it a step at a time and watch memory.
 
 ---
 

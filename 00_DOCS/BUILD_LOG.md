@@ -5,6 +5,37 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (latest+2) — all eight skills + context metering
+
+- **Seven more skills written**, completing the roster: solar-commissioning,
+  node-dark-triage, charging-triage, radio-wont-transmit, vehicle-wont-start,
+  water-source-decision, wound-triage. All eight wired into the router with
+  ordered triggers (first match wins, most specific vocabulary first) and
+  pinned by SKILL_TEST — now 28/28 contract tests.
+- Writing those tests exposed **three real fence gaps**, all now tightened:
+  "series or parallel" only matched when the word "panel" followed, so
+  "should I wire my panels in series or parallel?" was reaching the model;
+  medical missed stitches/laceration/puncture/deep cut; water missed
+  "safe to drink"/"drinkable"/"potable". The self-test earning its keep —
+  found by writing expectations, not by re-reading code.
+- The two fenced skills (wound-triage, water-source-decision) contain no
+  treatment, dose, or contact time of any kind, by design. wound-triage's
+  value is the assessment ORDER and the red-flag list, ending in the honest
+  line: if you are asking whether this needs a doctor and one is reachable,
+  the answer is yes.
+- **NEW context_meter.py**, answering "how does a user know the window is
+  filling up." The real hazard is not a missing readout: past its window
+  Ollama **silently drops the oldest messages** instead of erroring, and its
+  default window sits far below what models support (a 32k model commonly
+  runs at 2k-4k because num_ctx was never set). The tool prints trained
+  window vs pinned num_ctx so that gap is visible, and supplies the
+  4736/8k 58% [####......] readout.
+- **pi_agent.py** now requests num_ctx explicitly, prints that readout after
+  every step, and STOPS before overflow — an agent loop that overflows drops
+  the task description itself and keeps working amnesiac. Token counts come
+  from Ollama's own prompt_eval_count/eval_count, never estimated.
+- seed_qa/005 documents the trap, the fix, and the RAM/OOM caveat for the Pi.
+
 ## 2026-08-25 (latest+1) — skills layer + provisional seventh fenced domain
 
 - **New corpus type: `02_CORPORA/skills/`** — procedural overlays that tell the

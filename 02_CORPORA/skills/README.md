@@ -92,13 +92,13 @@ matching does the same job semantically.
 | Skill | Covers | Status |
 |---|---|---|
 | `generator-service` | Portable generators: won't-start triage, oil, altitude/jetting, fuel, CO, backfeed | written |
-| `solar-commissioning` | Wiring order, polarity check, series/parallel, fuse placement, MPPT vs PWM | planned |
-| `node-dark-triage` | The knowledge node is offline — working backwards from no lights | planned |
-| `charging-triage` | Battery isn't charging; reading the bands and the MPPT's own error codes | planned |
-| `radio-wont-transmit` | LoRa node silent: antenna, PA rail, region/preset, config | planned |
-| `vehicle-wont-start` | The obvious checks, then the FSM page pointer | planned |
-| `water-source-decision` | What's the source → which treatment applies (pointer-only endpoint) | planned |
-| `wound-triage` | What to ask, then the WikEM article (pointer-only, fenced) | planned |
+| `solar-commissioning` | Wiring order, polarity check, series/parallel, fuse placement, MPPT vs PWM | written |
+| `node-dark-triage` | Node offline — splits power vs computer in one question | written |
+| `charging-triage` | Not charging: controller codes first, then the cold-BMS cutoff | written |
+| `radio-wont-transmit` | LoRa silent: region unset, preset mismatch, antenna, PA rail | written |
+| `vehicle-wont-start` | Crank / no-crank split, then the FSM page pointer | written |
+| `water-source-decision` | Source → hazard class → which table (pointer-only, fenced) | written |
+| `wound-triage` | Assessment order + red flags, then the article (pointer-only, fenced) | written |
 
 Adding one? Follow the format, keep it shorter than you want to, and put the
 most common cause first — that's where the value is.
