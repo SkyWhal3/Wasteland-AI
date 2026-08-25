@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lora_oracle          # noqa: E402
 import make_skeleton        # noqa: E402,F401  (import IS the test)
+import meshtastic_probe     # noqa: E402,F401  (hardware imports must stay lazy)
 import pi_agent             # noqa: E402
 import power_monitor        # noqa: E402,F401
 import safety_router        # noqa: E402

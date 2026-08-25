@@ -21,5 +21,7 @@ jobs:
         run: python 05_SCRIPTS/tests/test_vedirect.py
       - name: Checksum tool end-to-end (build/verify/corrupt/missing)
         run: python 05_SCRIPTS/tests/test_checksums.py
+      - name: Radio probe logic (firmware parse, PSK grading, checklist)
+        run: python 05_SCRIPTS/tests/test_probe.py
       - name: Import + behavior smoke (jail, caps, allowlist, stale detection)
         run: python 05_SCRIPTS/tests/test_smoke.py
