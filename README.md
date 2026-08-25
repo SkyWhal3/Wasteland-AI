@@ -40,6 +40,10 @@ This repo is the **blueprint + working, reviewed code**; the library itself
 is free public downloads (Kiwix ZIMs and friends) — [MANIFEST.md §8](00_DOCS/MANIFEST.md)
 is the complete shopping list with sources and torrents.
 
+**Want in tonight? → [QUICKSTART.md](QUICKSTART.md)** — five minutes on any
+computer with no hardware (watch the safety router prove itself), or one
+evening for the offline-library demo that sells the whole idea.
+
 ## The part worth arguing about
 
 The AI is **not allowed to freelance on dangerous topics**. Six domains —
@@ -65,6 +69,7 @@ tree locally but *cannot* be committed by accident.
 
 | Path | What |
 |---|---|
+| [QUICKSTART.md](QUICKSTART.md) | **Start here.** Three on-ramps: 5-minute no-hardware, one-evening library demo, the full Pi build |
 | [00_DOCS/MANIFEST.md](00_DOCS/MANIFEST.md) | **The build doc.** December power math (with the GHI-vs-POA trap), 12 V/24 V fork, cold-Voc rules, battery economics, Meshtastic security reality check, build order |
 | [00_DOCS/SECURITY.md](00_DOCS/SECURITY.md) | Threat model: the radio keyhole, who can query you (allowlist), malware reality, login hardening, seizure trade-offs |
 | [00_DOCS/CODE_REVIEW_2026-08-25.md](00_DOCS/CODE_REVIEW_2026-08-25.md) | Adversarial review findings on the v1 scripts, and what was fixed |

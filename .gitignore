@@ -19,6 +19,7 @@
 !/.gitattributes
 !/LICENSE
 !/README.md
+!/QUICKSTART.md
 !/00_DOCS/
 !/05_SCRIPTS/
 
@@ -49,6 +50,7 @@ power_log.csv
 latest.json
 oracle.log
 checksums.csv
+demo.csv
 agent_transcript*.jsonl
 agent_scratch/
 

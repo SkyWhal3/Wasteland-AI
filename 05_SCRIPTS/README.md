@@ -18,7 +18,15 @@ Test everything before relying on it.
 **Windows note:** `verify_checksums.py`, `safety_router.py`, and
 `power_monitor.py` (bench test with the cable) run fine on Windows —
 port auto-detect handles `COM3`-style ports. The oracle and agent are
-meant for the Pi.
+meant for the Pi. Windows setup is two lines (PowerShell):
+
+```powershell
+py -m venv venv
+.\venv\Scripts\Activate.ps1     # blocked? Set-ExecutionPolicy -Scope Process Bypass
+pip install -r requirements.txt
+```
+
+(Python 3.9 or newer, everywhere — Pi OS Bookworm ships 3.11, fine.)
 
 ---
 
