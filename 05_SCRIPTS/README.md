@@ -1,17 +1,24 @@
-# OFFGRID Starter Code — Setup Guide (Raspberry Pi, step by step)
+# OFFGRID Starter Code — Setup Guide (step by step)
 
-Four small scripts that turn the manifest into a running system:
+Six small scripts that turn the manifest into a running system:
 
 | Script | What it does | Needs |
 |---|---|---|
 | `verify_checksums.py` | Fingerprints your archive so bit rot can't hide | nothing (pure Python) |
-| `power_monitor.py` | Logs solar/battery data from a Victron VE.Direct cable, computes the GREEN/YELLOW/RED/BLACK band | VE.Direct-to-USB cable |
+| `power_monitor.py` | Logs solar/battery data from a Victron VE.Direct cable, validates every frame's checksum, computes the GREEN/YELLOW/RED/BLACK band | VE.Direct-to-USB cable |
 | `lora_oracle.py` | The mesh bot: `?power` `?med` `?find` `?ask` over Meshtastic, 200-char cap, rate-limited | USB Meshtastic node |
-| `safety_router.py` | Classifies questions into retrieval-only / artifact-lookup / RAG / model before any AI runs | nothing |
+| `safety_router.py` | Classifies questions into retrieval-only / artifact-lookup / RAG / model before any AI runs (`--test` = self-check) | nothing |
+| `pi_agent.py` | Minimal coding agent, jailed to a scratch drive. **Ships disabled.** | Ollama + a coder model |
+| `make_skeleton.py` | Rebuilds the full §13 folder tree after a bare clone | nothing |
 
-These are **starter examples**: commented for beginners, safe by default (nothing
-switches relays or hardware), and meant to be read as much as run. Test everything
-before relying on it.
+These are **starter examples**: commented for beginners, safe by default
+(nothing switches relays or hardware), and meant to be read as much as run.
+Test everything before relying on it.
+
+**Windows note:** `verify_checksums.py`, `safety_router.py`, and
+`power_monitor.py` (bench test with the cable) run fine on Windows —
+port auto-detect handles `COM3`-style ports. The oracle and agent are
+meant for the Pi.
 
 ---
 
@@ -58,37 +65,47 @@ Verify any time after (yearly minimum, or let a cron job do it):
 python verify_checksums.py check /path/to/ARCHIVE --index checksums.csv
 ```
 
-Any `MISMATCH` line = a file changed or rotted since indexing. Restore it from
-another copy, then rebuild the index.
+- `MISMATCH` = a file changed or rotted since indexing. `READ ERROR` = the
+  drive couldn't even read it (worse). Restore flagged files from another
+  copy, then re-run `build`.
+- Indexes are portable: build on the Windows array, check on the Pi.
+- Keep a copy of the index on a **different drive** than the archive.
 
 ---
 
 ## 2. power_monitor.py — solar telemetry
 
-Plug the VE.Direct-to-USB cable into the controller and the Pi, then:
+Plug the VE.Direct-to-USB cable into the controller and any USB port, then:
 
 ```bash
-python power_monitor.py --list-ports     # find the port if auto-detect fails
-python power_monitor.py                  # run with defaults
+python power_monitor.py --list-ports    # see every port + VID:PID
+python power_monitor.py                 # run with auto-detect
 ```
 
 It writes two things:
-- `power_log.csv` — one row per reading (timestamp, volts, amps, PV watts, band)
-- `latest.json` — the current snapshot, which `lora_oracle.py` reads for `?power`
+- `power_log.csv` — one row per interval (volts, amps, PV watts, charge
+  state, error, band)
+- `latest.json` — the current snapshot (written atomically), which
+  `lora_oracle.py` reads for `?power`
 
-**Honest limitation, read this:** a solar charge controller reports *voltage*, not
-state of charge. LiFePO4 voltage is nearly flat from 90% down to 20%, so the band
-estimate from voltage alone is crude, and the script only trusts it when the battery
-is resting (not charging). For real SOC, add a shunt monitor (e.g. Victron SmartShunt
-— it speaks the same VE.Direct protocol; plug it into a second USB port and run a
-second copy of this script pointed at it).
+Corrupt frames (serial noise) are dropped, not logged — you'll see a stderr
+note if it happens a lot (check cable routing near the inverter).
+
+**Honest limitation, read this:** a solar charge controller reports
+*voltage*, not state of charge. LiFePO4 voltage is nearly flat from 90%
+down to 20%, so the band estimate from voltage alone is crude; the script
+only trusts it when the battery is resting (no PV, no charge current), and
+reports `UNKNOWN` until it has evidence. For real SOC, add a shunt monitor
+(Victron SmartShunt — same VE.Direct protocol; second USB port, second copy
+of this script).
 
 ---
 
 ## 3. lora_oracle.py — the mesh bot
 
-Plug your Meshtastic node into the Pi via USB. Make sure `kiwix-serve` is running if
-you want `?med` (default assumed: `http://127.0.0.1:8080`, book `wikem_en_all`).
+Plug your Meshtastic node into the Pi via USB. Make sure `kiwix-serve` is
+running if you want `?med` (default assumed: `http://127.0.0.1:8080`, book
+`wikem_en_all`).
 
 ```bash
 python lora_oracle.py
@@ -106,11 +123,18 @@ From another node, send a **direct message** to the Pi's node:
 Defaults are deliberately conservative:
 - **DM-only** — it ignores channel traffic so it can never spam the public mesh
 - **200-character cap**, enforced in code
-- **60-second rate limit per sender**
+- **60-second rate limit per sender**, silent drop (zero airtime)
 - `?ask` (the AI path) is **OFF** until you set `OLLAMA_MODEL` in the config block
+- Slow lookups run outside the radio callback, so the radio never stalls
 
-**Test on a private channel/DM before this thing lives anywhere near LongFast.
-Airtime is a commons.**
+**Known-fragile seam:** kiwix-serve's article URLs drifted across versions.
+The script tries the current scheme (`/content/<book>/<path>`) then the
+legacy one. If `?med` returns "no match" for things that exist, check the
+book name (`KIWIX_BOOK`) matches what `http://127.0.0.1:8080` shows, and
+file an issue with your kiwix-tools version — you're the test fleet.
+
+**Test on a private channel/DM before this thing lives anywhere near
+LongFast. Airtime is a commons.**
 
 ---
 
@@ -122,15 +146,40 @@ python safety_router.py "how much Varget for a 168gr .308 load?"
 
 python safety_router.py "what's the pinout of the sx1262?"
 # -> ARTIFACT_LOOKUP: return filename + page from the datasheet tree.
+
+python safety_router.py --test
+# -> 14 canonical routings, PASS/FAIL. Run after every keyword edit.
 ```
 
-It's a keyword classifier — extend the lists at the top as you find gaps. The point
-is architectural: **the question gets routed before any model runs**, so the six
-dangerous domains physically cannot reach the "creative" path.
+It's a keyword classifier — extend the lists at the top as you find gaps.
+The point is architectural: **the question gets routed before any model
+runs**, so the six dangerous domains physically cannot reach the "creative"
+path. Add your new expectation to `SELF_TEST` when you add keywords.
 
 ---
 
-## 5. Run at boot (systemd)
+## 5. pi_agent.py — the coding agent (read before enabling)
+
+A ~300-line agent loop: local model + five tools (list/read/write/run,
+plus a read-only shelf of known-good examples in `agent_examples/`). Every
+file operation is jailed to `AGENT_ROOT` — point that at the sacrificial
+scratch SSD, **not** at the archive.
+
+```bash
+python pi_agent.py "write micropython for a pico that blinks the LED"
+```
+
+Ships **disabled** (`AGENT_MODEL = None`). Before enabling, read the
+docstring — especially the part titled "a seatbelt, not a prison":
+`run_python` executes real code with your user's real permissions. Scratch
+drive, unprivileged user, review before promoting code out of the sandbox.
+
+The agent is for *writing code*, offline. Questions go through the router
+and the Oracle — do not wire the agent to the radio.
+
+---
+
+## 6. Run at boot (systemd)
 
 Example for the power monitor (repeat the pattern for the oracle):
 
@@ -142,7 +191,7 @@ After=multi-user.target
 
 [Service]
 User=pi
-WorkingDirectory=/home/pi/offgrid/code
+WorkingDirectory=/home/pi/offgrid/05_SCRIPTS
 ExecStart=/home/pi/offgrid-env/bin/python power_monitor.py
 Restart=on-failure
 RestartSec=10
@@ -156,18 +205,22 @@ sudo systemctl enable --now power-monitor
 journalctl -u power-monitor -f        # watch it live
 ```
 
-(Adjust `User`, paths to match your setup.)
+(Adjust `User` and paths. Keep the oracle and the monitor in the SAME
+WorkingDirectory so `?power` finds `latest.json`.)
 
 ---
 
 ## Troubleshooting
 
-- **`Permission denied: /dev/ttyUSB0`** → you skipped the `dialout` group step, or
-  didn't log out afterward.
-- **Two USB serial devices fighting** (radio + VE.Direct on one Pi): use the stable
-  paths in `/dev/serial/by-id/` instead of `ttyUSB0/1` — set them in each script's
-  config block.
+- **`Permission denied: /dev/ttyUSB0`** → you skipped the `dialout` group
+  step, or didn't log out afterward.
+- **Two USB serial devices fighting** (radio + VE.Direct on one Pi): pin the
+  stable paths from `/dev/serial/by-id/` in each script's config block —
+  `power_monitor.py --list-ports` shows what's what.
 - **`?med` returns nothing** → is kiwix-serve running? `curl http://127.0.0.1:8080`
-  from the Pi. Is the book name in the config block exactly what kiwix shows?
-- **Oracle never replies** → confirm you sent a *direct message*, not a channel
-  message. That's a feature.
+  from the Pi. Is `KIWIX_BOOK` exactly what kiwix shows? Still stuck: see
+  the "known-fragile seam" note in §3.
+- **`?power` says STALE** → the oracle is fine; power_monitor.py stopped.
+  `systemctl status power-monitor`.
+- **Oracle never replies** → confirm you sent a *direct message*, not a
+  channel message. That's a feature. Also: one query per sender per minute.

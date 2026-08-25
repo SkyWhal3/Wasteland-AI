@@ -1,0 +1,13 @@
+# Normalize line endings: repo stores LF; working copies get sensible defaults.
+* text=auto
+
+# Files that will execute on the Pi MUST be LF — a CRLF shebang line breaks
+# `./script.py` on Linux with a cryptic "bad interpreter" error.
+*.py text eol=lf
+*.sh text eol=lf
+
+# Keep docs/data as normalized text
+*.md  text
+*.csv text
+*.json text
+*.txt text

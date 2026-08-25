@@ -7,7 +7,7 @@ Commands (send as a DIRECT MESSAGE to this node):
   ?help              list commands
   ?power             battery/solar snapshot  (reads power_monitor.py's latest.json)
   ?med <query>       RETRIEVAL-ONLY medical lookup from Kiwix (WikEM) — no AI
-  ?find <query>      look up a part in INVENTORY.csv (Layer 0)
+  ?find <query>      look up a part in INVENTORY.csv (Layer 0, manifest §7.1)
   ?ask <question>    small local model via Ollama — OFF until configured, and
                      always labeled "AI:" because model output is not a source
 
@@ -16,16 +16,23 @@ Design rules, enforced in code (not vibes):
   * 200-character cap on every reply (Meshtastic usable payload is ~230 bytes).
   * One query per sender per RATE_LIMIT_S seconds.
   * ?med never touches a language model. Retrieval only. See manifest §9.
+  * The radio callback does NO slow work. It validates, rate-limits, and
+    queues; kiwix/Ollama lookups run in the main loop. The meshtastic library
+    delivers packets on its own worker thread — blocking that thread for
+    seconds (or 2 minutes, for ?ask) would stall the whole radio interface.
 
 Run:  python lora_oracle.py     (Meshtastic node on USB; kiwix-serve running)
 """
 
+from __future__ import annotations
+
 import csv
 import json
+import queue
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -44,9 +51,16 @@ MAX_CHARS = 200                    # hard reply cap — do not raise casually
 RATE_LIMIT_S = 60                  # per-sender cooldown
 KIWIX_URL = "http://127.0.0.1:8080"
 KIWIX_BOOK = "wikem_en_all"        # must match a book kiwix-serve is serving
-INVENTORY_CSV = Path("INVENTORY.csv")   # Layer 0 file (see manifest §8/§7.1)
-LATEST_JSON = Path("latest.json")       # written by power_monitor.py
+LATEST_JSON = Path("latest.json")  # written by power_monitor.py
+STALE_AFTER_S = 300                # ?power warns if telemetry is older than this
 ORACLE_LOG = Path("oracle.log")
+
+# Layer 0 inventory — first existing path wins. The second entry matches the
+# manifest §13 layout when this script runs from 05_SCRIPTS/.
+INVENTORY_CANDIDATES = [
+    Path("INVENTORY.csv"),
+    Path(__file__).resolve().parent.parent / "00_INVENTORY" / "INVENTORY.csv",
+]
 
 # ?ask stays disabled until you set a model, e.g. "qwen2.5:3b" pulled in Ollama.
 OLLAMA_URL = "http://127.0.0.1:11434"
@@ -54,6 +68,8 @@ OLLAMA_MODEL = None                # None = ?ask disabled (safe default)
 # ---------------------------------------------------------------------------
 
 _last_seen: dict[int, float] = {}   # sender node number -> last-served time
+_JOBS: queue.Queue = queue.Queue()  # (sender, text) handed from radio thread
+MY_NUM: int | None = None           # our node number, set in main()
 
 
 def clip(s: str) -> str:
@@ -90,6 +106,14 @@ def cmd_power(_arg: str) -> str:
         parts.append(f"PV {d['pv_W']:.0f}W")
     if d.get("yield_today_kWh") is not None:
         parts.append(f"TODAY {d['yield_today_kWh']}kWh")
+    # Old data presented as current is a lie — say when the monitor went quiet.
+    try:
+        age = (datetime.now(timezone.utc)
+               - datetime.fromisoformat(d["utc"])).total_seconds()
+        if age > STALE_AFTER_S:
+            parts.append(f"STALE {int(age // 60)}min — monitor down?")
+    except (KeyError, ValueError, TypeError):
+        parts.append("STALE ?")
     return " | ".join(parts)
 
 
@@ -99,9 +123,28 @@ def _strip_html(html: str) -> str:
     return " ".join(text.split())
 
 
+def _kiwix_article_html(path: str) -> str | None:
+    """Fetch an article's raw HTML from kiwix-serve.
+
+    The suggestion 'path' is relative to the book (e.g. "A/Dehydration").
+    Current kiwix-serve serves content at /content/<book>/<path>; older
+    builds used /<book>/<path>. Try both so one script spans versions —
+    this is the known-fragile seam, flagged in the README.
+    """
+    for url in (f"{KIWIX_URL}/content/{KIWIX_BOOK}/{path}",
+                f"{KIWIX_URL}/{KIWIX_BOOK}/{path}"):
+        try:
+            r = requests.get(url, timeout=10)
+        except requests.RequestException:
+            return None
+        if r.ok:
+            return r.text
+    return None
+
+
 def cmd_med(query: str) -> str:
     """RETRIEVAL ONLY. Finds the best-matching WikEM article via kiwix-serve's
-    suggestion endpoint and returns title + opening text + where to read it.
+    /suggest endpoint and returns title + opening text + where to read it.
     No language model is involved in this path, by design (manifest §9)."""
     if not query:
         return "Usage: ?med <topic>   e.g. ?med tourniquet"
@@ -110,37 +153,43 @@ def cmd_med(query: str) -> str:
                          params={"content": KIWIX_BOOK, "term": query},
                          timeout=10)
         r.raise_for_status()
-        hits = [h for h in r.json() if h.get("kind") == "path" or "path" in h]
-        if not hits:
-            return f"WIKEM: no match for '{query}'. Try another term."
-        title = hits[0].get("label") or hits[0].get("value", query)
-        path = hits[0]["path"]
-
-        art = requests.get(f"{KIWIX_URL}/viewer#{path}".replace("/viewer#", "/"),
-                           timeout=10)
-        snippet = ""
-        if art.ok:
-            snippet = _strip_html(art.text)
-            # drop the leading title repetition if present
-            if snippet.lower().startswith(title.lower()):
-                snippet = snippet[len(title):].lstrip(" -:")
-        head = f"WIKEM: {title.upper()} | "
-        tail = " | FULL TEXT AT NODE"
-        room = MAX_CHARS - len(head) - len(tail)
-        return head + snippet[:max(room, 0)] + tail
-    except requests.RequestException:
+        suggestions = r.json()
+    except (requests.RequestException, ValueError):
         return "WIKEM: node's kiwix-serve unreachable."
+
+    # Real article suggestions have kind == "path" and a path; the list may
+    # end with a kind == "pattern" full-text-search row we must skip.
+    hits = [h for h in suggestions if h.get("kind") == "path" and h.get("path")]
+    if not hits:
+        return f"WIKEM: no match for '{query}'. Try another term."
+
+    # 'value' is the plain title; 'label' can carry <b>…</b> highlight markup
+    # (we are NOT sending HTML over a 200-char radio message).
+    title = hits[0].get("value") or re.sub(r"<[^>]+>", "",
+                                           hits[0].get("label", query))
+    html = _kiwix_article_html(hits[0]["path"])
+    snippet = ""
+    if html:
+        snippet = _strip_html(html)
+        # drop the leading title repetition if present
+        if snippet.lower().startswith(title.lower()):
+            snippet = snippet[len(title):].lstrip(" -:")
+    head = f"WIKEM: {title.upper()} | "
+    tail = " | FULL TEXT AT NODE"
+    room = MAX_CHARS - len(head) - len(tail)
+    return head + snippet[:max(room, 0)] + tail
 
 
 def cmd_find(query: str) -> str:
     """Layer 0 lookup: search INVENTORY.csv, return location + datasheet path."""
     if not query:
         return "Usage: ?find <part>   e.g. ?find sx1262"
-    if not INVENTORY_CSV.exists():
-        return "No INVENTORY.csv yet. Build Layer 0 (manifest §8)."
+    inv = next((p for p in INVENTORY_CANDIDATES if p.exists()), None)
+    if inv is None:
+        return "No INVENTORY.csv yet. Build Layer 0 (manifest §7.1)."
     q = query.lower()
     try:
-        with open(INVENTORY_CSV, newline="", encoding="utf-8") as f:
+        with open(inv, newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
                 hay = " ".join(str(v) for v in row.values()).lower()
                 if q in hay:
@@ -178,12 +227,19 @@ COMMANDS = {"?help": cmd_help, "?power": cmd_power, "?med": cmd_med,
             "?find": cmd_find, "?ask": cmd_ask}
 
 
+def handle(text: str) -> str:
+    cmd, _, arg = text.partition(" ")
+    handler = COMMANDS.get(cmd.lower())
+    return handler(arg.strip()) if handler else "Unknown cmd. ?help for the list."
+
+
 # --------------------------- mesh plumbing ----------------------------------
 
-def on_receive(packet, interface):  # pubsub callback signature
+def on_receive(packet, interface):  # pubsub callback signature — names matter
+    """Runs on the meshtastic library's thread. FAST PATH ONLY:
+    validate, rate-limit, enqueue. No network calls in here, ever."""
     try:
-        my_num = interface.myInfo.my_node_num
-        if packet.get("to") != my_num:
+        if MY_NUM is None or packet.get("to") != MY_NUM:
             return                                  # DM-only. Non-negotiable.
         decoded = packet.get("decoded", {})
         if decoded.get("portnum") != "TEXT_MESSAGE_APP":
@@ -197,32 +253,41 @@ def on_receive(packet, interface):  # pubsub callback signature
         if now - _last_seen.get(sender, 0) < RATE_LIMIT_S:
             return                                  # silent drop = zero airtime
         _last_seen[sender] = now
-
-        cmd, _, arg = text.partition(" ")
-        handler = COMMANDS.get(cmd.lower())
-        reply = handler(arg.strip()) if handler else \
-            "Unknown cmd. ?help for the list."
-        reply = clip(reply)
-
-        log(f"FROM {sender!r}: {text!r} -> {reply!r}")
-        interface.sendText(reply, destinationId=sender)
+        _JOBS.put((sender, text))
     except Exception as e:                          # a bot that crashes on one
-        log(f"ERROR handling packet: {e}")          # bad packet is useless
+        log(f"ERROR in receive callback: {e}")      # bad packet is useless
 
 
 def main():
+    global MY_NUM
     print("Connecting to Meshtastic node...")
-    iface = (meshtastic.serial_interface.SerialInterface(devPath=SERIAL_PORT)
-             if SERIAL_PORT else meshtastic.serial_interface.SerialInterface())
+    try:
+        iface = (meshtastic.serial_interface.SerialInterface(devPath=SERIAL_PORT)
+                 if SERIAL_PORT else meshtastic.serial_interface.SerialInterface())
+    except Exception as e:
+        print(f"Could not open a Meshtastic node ({e}).\n"
+              f"Is it plugged in via USB? Try: meshtastic --info", file=sys.stderr)
+        sys.exit(2)
+
+    MY_NUM = iface.myInfo.my_node_num
     pub.subscribe(on_receive, "meshtastic.receive")
-    me = iface.myInfo.my_node_num
-    print(f"Oracle up as node {me}. DM-only, {MAX_CHARS}-char cap, "
+    print(f"Oracle up as node {MY_NUM}. DM-only, {MAX_CHARS}-char cap, "
           f"{RATE_LIMIT_S}s rate limit. Ctrl-C to stop.")
     if OLLAMA_MODEL is None:
         print("?ask is DISABLED (OLLAMA_MODEL=None). ?med/?find/?power active.")
+
     try:
         while True:
-            time.sleep(1)
+            try:
+                sender, text = _JOBS.get(timeout=1)
+            except queue.Empty:
+                continue
+            reply = clip(handle(text))
+            log(f"FROM {sender!r}: {text!r} -> {reply!r}")
+            try:
+                iface.sendText(reply, destinationId=sender)
+            except Exception as e:       # radio hiccup: log it, stay alive
+                log(f"ERROR sending reply: {e}")
     except KeyboardInterrupt:
         print("\nShutting down.")
         iface.close()

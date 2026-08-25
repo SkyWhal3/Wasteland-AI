@@ -1,8 +1,10 @@
 # Python dependencies for the OFFGRID starter scripts
 # Install inside a virtual environment (see README.md):
 #   pip install -r requirements.txt
+#
+# verify_checksums.py, safety_router.py, make_skeleton.py: pure stdlib.
 
 pyserial>=3.5        # power_monitor.py  - reads the Victron VE.Direct cable
 meshtastic>=2.3      # lora_oracle.py    - talks to the Meshtastic node over USB
 pypubsub>=4.0        # lora_oracle.py    - message events from the meshtastic library
-requests>=2.31       # lora_oracle.py    - queries the local kiwix-serve and Ollama
+requests>=2.31       # lora_oracle.py + pi_agent.py - local kiwix-serve / Ollama

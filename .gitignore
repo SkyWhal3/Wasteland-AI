@@ -16,10 +16,21 @@
 
 # ...then re-allow exactly the public subset:
 !/.gitignore
+!/.gitattributes
 !/LICENSE
 !/README.md
 !/00_DOCS/
 !/05_SCRIPTS/
+
+# Two SHAREABLE, text-only corpus subsets ride along (reviewed content the
+# group needs). Everything else in 02_CORPORA stays local — including
+# CORPUS_INDEX.csv, which will eventually enumerate personal files.
+!/02_CORPORA/
+/02_CORPORA/*
+!/02_CORPORA/seed_qa/
+!/02_CORPORA/reference_tables/
+/02_CORPORA/reference_tables/*
+!/02_CORPORA/reference_tables/WIRING_DIAGRAMS_SOLAR.md
 
 # -----------------------------------------------------------------------------
 # Junk and runtime artifacts, ignored even inside the whitelisted folders.
@@ -51,7 +62,8 @@ desktop.ini
 # NEVER whitelist these (they are already ignored by /* — this is a reminder):
 #   00_INVENTORY/   — bin locations + serials of everything you own
 #   01_MODELS/      — terabytes
-#   02_CORPORA/     — terabytes + personal PDFs
+#   02_CORPORA/     — terabytes + personal PDFs (only the two text subsets
+#                     above are shared, nothing else)
 #   03_SOFTWARE/    — installers, mirrors
 #   04_CONFIG/      — meshtastic/ contains PRIVATE CHANNEL KEYS
 #   06_MONUMENT/    — excluded from backups and from hope
