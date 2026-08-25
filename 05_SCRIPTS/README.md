@@ -126,6 +126,10 @@ Defaults are deliberately conservative:
 - **60-second rate limit per sender**, silent drop (zero airtime)
 - `?ask` (the AI path) is **OFF** until you set `OLLAMA_MODEL` in the config block
 - Slow lookups run outside the radio callback, so the radio never stalls
+- **`AUTHORIZED_SENDERS`**: unset = open mode for bench testing (loud
+  warning at startup). Before the node lives on a real mesh, set it to your
+  people's node numbers — `?power`/`?find` are occupancy-and-inventory
+  intel you don't hand to strangers. See `00_DOCS/SECURITY.md`.
 
 **Known-fragile seam:** kiwix-serve's article URLs drifted across versions.
 The script tries the current scheme (`/content/<book>/<path>`) then the

@@ -67,6 +67,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parent / "agent_examples"
 MAX_STEPS = 12                # hard ceiling per task
 RUN_TIMEOUT_S = 30            # run_python wall-clock limit
 MAX_TOOL_OUTPUT = 2000        # chars of tool output fed back to the model
+MAX_FILE_BYTES = 256_000      # per-file cap: a looping model can't fill the SSD
 TRANSCRIPT = Path("agent_transcript.jsonl")   # full audit log, one JSON/line
 # ---------------------------------------------------------------------------
 
@@ -126,10 +127,17 @@ def t_list_files() -> str:
 
 
 def t_read_file(path: str) -> str:
-    return _jailed(path).read_text(encoding="utf-8")
+    p = _jailed(path)
+    if p.is_file() and p.stat().st_size > MAX_FILE_BYTES:
+        return (f"TOOL ERROR: {path} is {p.stat().st_size} B — too big to "
+                f"read whole (cap {MAX_FILE_BYTES}). Work in smaller files.")
+    return p.read_text(encoding="utf-8")
 
 
 def t_write_file(path: str, content: str) -> str:
+    if len(str(content).encode("utf-8")) > MAX_FILE_BYTES:
+        return (f"TOOL ERROR: content exceeds {MAX_FILE_BYTES} B — "
+                f"split the work into smaller files.")
     target = _jailed(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")

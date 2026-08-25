@@ -3,8 +3,13 @@
 #   pip install -r requirements.txt
 #
 # verify_checksums.py, safety_router.py, make_skeleton.py: pure stdlib.
+#
+# Upper bounds keep a fresh install from silently jumping a major version
+# and breaking the API these scripts were written against. The REAL pin for
+# offline rebuilds is the wheel cache in 03_SOFTWARE/python/ — build it with:
+#   pip download -r requirements.txt -d ./wheels
 
-pyserial>=3.5        # power_monitor.py  - reads the Victron VE.Direct cable
-meshtastic>=2.3      # lora_oracle.py    - talks to the Meshtastic node over USB
-pypubsub>=4.0        # lora_oracle.py    - message events from the meshtastic library
-requests>=2.31       # lora_oracle.py + pi_agent.py - local kiwix-serve / Ollama
+pyserial>=3.5,<4       # power_monitor.py  - reads the Victron VE.Direct cable
+meshtastic>=2.3,<3     # lora_oracle.py    - talks to the Meshtastic node over USB
+pypubsub>=4.0,<5       # lora_oracle.py    - message events from the meshtastic library
+requests>=2.31,<3      # lora_oracle.py + pi_agent.py - local kiwix-serve / Ollama

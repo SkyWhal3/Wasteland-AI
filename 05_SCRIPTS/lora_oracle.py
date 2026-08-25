@@ -65,10 +65,23 @@ INVENTORY_CANDIDATES = [
 # ?ask stays disabled until you set a model, e.g. "qwen2.5:3b" pulled in Ollama.
 OLLAMA_URL = "http://127.0.0.1:11434"
 OLLAMA_MODEL = None                # None = ?ask disabled (safe default)
+
+# Who may use this oracle. None = OPEN MODE: any node that can DM you gets
+# answers — fine on the bench, and the script warns loudly at startup.
+# For a deployed node, set your people's node NUMBERS, e.g. {305419896,
+# 862533815} — everyone else is silently ignored (zero airtime, logged
+# locally). Numbers come from this script's startup line or
+# `meshtastic --nodes`. Why it matters: ?power reveals whether anyone is
+# home and how much reserve you have; ?find reveals what you own.
+# See 00_DOCS/SECURITY.md.
+AUTHORIZED_SENDERS: set[int] | None = None
+
+MAX_LOG_BYTES = 1_000_000          # oracle.log rotates past this (SD cards die)
 # ---------------------------------------------------------------------------
 
 _last_seen: dict[int, float] = {}   # sender node number -> last-served time
-_JOBS: queue.Queue = queue.Queue()  # (sender, text) handed from radio thread
+_JOBS: queue.Queue = queue.Queue(maxsize=8)   # radio thread -> worker,
+                                    # bounded so a burst can't eat RAM
 MY_NUM: int | None = None           # our node number, set in main()
 
 
@@ -80,6 +93,11 @@ def clip(s: str) -> str:
 
 def log(line: str) -> None:
     stamp = datetime.now().isoformat(timespec="seconds")
+    try:                    # size-capped: keep the current log + one .old
+        if ORACLE_LOG.exists() and ORACLE_LOG.stat().st_size > MAX_LOG_BYTES:
+            ORACLE_LOG.replace(ORACLE_LOG.with_suffix(".log.old"))
+    except OSError:
+        pass                # logging must never take the oracle down
     with open(ORACLE_LOG, "a", encoding="utf-8") as f:
         f.write(f"{stamp} {line}\n")
     print(f"{stamp} {line}")
@@ -235,6 +253,13 @@ def handle(text: str) -> str:
 
 # --------------------------- mesh plumbing ----------------------------------
 
+def _authorized(sender: int) -> bool:
+    """OPEN MODE (None) lets anyone query; an allowlist admits only your
+    people. Denials are silent on the radio (airtime is a commons) and
+    logged locally so you can see who's knocking."""
+    return AUTHORIZED_SENDERS is None or sender in AUTHORIZED_SENDERS
+
+
 def on_receive(packet, interface):  # pubsub callback signature — names matter
     """Runs on the meshtastic library's thread. FAST PATH ONLY:
     validate, rate-limit, enqueue. No network calls in here, ever."""
@@ -252,8 +277,14 @@ def on_receive(packet, interface):  # pubsub callback signature — names matter
         now = time.time()
         if now - _last_seen.get(sender, 0) < RATE_LIMIT_S:
             return                                  # silent drop = zero airtime
-        _last_seen[sender] = now
-        _JOBS.put((sender, text))
+        _last_seen[sender] = now                    # (rate-limits denials too)
+        if not _authorized(sender):
+            log(f"DENIED (not in AUTHORIZED_SENDERS) {sender!r}: {text!r}")
+            return                                  # no reply — zero airtime
+        try:
+            _JOBS.put_nowait((sender, text))
+        except queue.Full:                          # worker is drowning —
+            log(f"DROPPED (queue full) {sender!r}: {text!r}")   # shed load
     except Exception as e:                          # a bot that crashes on one
         log(f"ERROR in receive callback: {e}")      # bad packet is useless
 
@@ -275,6 +306,11 @@ def main():
           f"{RATE_LIMIT_S}s rate limit. Ctrl-C to stop.")
     if OLLAMA_MODEL is None:
         print("?ask is DISABLED (OLLAMA_MODEL=None). ?med/?find/?power active.")
+    if AUTHORIZED_SENDERS is None:
+        print("WARNING: OPEN MODE — AUTHORIZED_SENDERS is not set, so ANY node\n"
+              "on the mesh can query this oracle (?power reveals battery state,\n"
+              "?find reveals inventory). Fine on a bench. Set the allowlist\n"
+              "before this node lives on a real mesh — see 00_DOCS/SECURITY.md.")
 
     try:
         while True:
