@@ -1,0 +1,58 @@
+# =============================================================================
+# WHITELIST MODE — everything is ignored unless explicitly re-allowed below.
+#
+# Why: this repo is the PUBLIC RELEASE SUBSET (docs + code), not the project
+# folder. The project folder also holds things that must never reach a public
+# remote: Meshtastic channel configs (private PSKs), power logs (timestamped
+# occupancy patterns), the Layer-0 inventory (what you own and where it is),
+# personal PDFs, and terabytes of models/corpora. With a whitelist, a careless
+# `git add .` physically cannot leak them — the default answer is NO.
+#
+# To track something new, add a `!` line for it. Think before you do.
+# =============================================================================
+
+# Ignore every top-level entry...
+/*
+
+# ...then re-allow exactly the public subset:
+!/.gitignore
+!/LICENSE
+!/README.md
+!/00_DOCS/
+!/05_SCRIPTS/
+
+# -----------------------------------------------------------------------------
+# Junk and runtime artifacts, ignored even inside the whitelisted folders.
+# (Order matters: these come AFTER the `!` rules so they win.)
+# -----------------------------------------------------------------------------
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Script runtime output (regenerated constantly; logs can reveal patterns)
+power_log.csv
+latest.json
+oracle.log
+checksums.csv
+agent_transcript*.jsonl
+agent_scratch/
+
+# Editors / OS noise
+Thumbs.db
+desktop.ini
+.DS_Store
+*.tmp
+
+# =============================================================================
+# NEVER whitelist these (they are already ignored by /* — this is a reminder):
+#   00_INVENTORY/   — bin locations + serials of everything you own
+#   01_MODELS/      — terabytes
+#   02_CORPORA/     — terabytes + personal PDFs
+#   03_SOFTWARE/    — installers, mirrors
+#   04_CONFIG/      — meshtastic/ contains PRIVATE CHANNEL KEYS
+#   06_MONUMENT/    — excluded from backups and from hope
+# =============================================================================
