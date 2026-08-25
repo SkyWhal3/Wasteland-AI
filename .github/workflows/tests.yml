@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # what Raspberry Pi OS Bookworm ships
+      - name: Install script dependencies (real meshtastic/pyserial/requests)
+        run: pip install -r 05_SCRIPTS/requirements.txt
+      - name: Safety router contract (14 canonical routings)
+        run: python 05_SCRIPTS/safety_router.py --test
+      - name: VE.Direct parser unit tests (synthetic/corrupt/hex/split frames)
+        run: python 05_SCRIPTS/tests/test_vedirect.py
+      - name: Checksum tool end-to-end (build/verify/corrupt/missing)
+        run: python 05_SCRIPTS/tests/test_checksums.py
+      - name: Import + behavior smoke (jail, caps, allowlist, stale detection)
+        run: python 05_SCRIPTS/tests/test_smoke.py

@@ -36,6 +36,13 @@ python power_monitor.py --list-ports
 > If `Activate.ps1` is blocked: `Set-ExecutionPolicy -Scope Process Bypass`
 > (affects this one window only), then activate again.
 
+Want more proof? The full test suite runs anywhere too (same as CI):
+```bash
+python tests/test_vedirect.py
+python tests/test_checksums.py
+python tests/test_smoke.py
+```
+
 **What you just saw:**
 - `--test` — the safety contract executing: 14 canonical questions routed,
   dangerous ones provably fenced away from the AI. This is the audit.
