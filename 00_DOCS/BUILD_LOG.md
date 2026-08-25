@@ -5,6 +5,23 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (latest) — public build guide published
+
+- `OFFGRID_PUBLIC_EDITION.md` (chat-mode's group-facing build doc, until now
+  git-ignored and unpublished) promoted to **`00_DOCS/BUILD_GUIDE.md`** with six
+  code-sync fixes: repo + QUICKSTART pointers and a doc-map, the six-script
+  inventory, the `AUTHORIZED_SENDERS` allowlist and why it matters, corrected
+  `?power` sample output (+ STALE), the `--demo` no-hardware path, the kiwix
+  book-name trap as a build-order warning, and a "check your closet before your
+  wallet" Tier 1 note (a mini PC + ~$120 RAM runs 30B-A3B — the NUC lesson,
+  generalized). Prose and philosophy left untouched: chat-mode's voice.
+- README: BUILD_GUIDE row added, MANIFEST relabelled "the engineering reference"
+  so the three docs have distinct jobs (try it / build it / reference), and the
+  tier table's cash column relabelled "power side" with ranges now matching the
+  guide ($400–700 / $1,100–1,900 — they had already drifted).
+- The original file keeps a SUPERSEDED banner locally so future edits go to the
+  published copy.
+
 ## 2026-08-25 (later) — first library content + live ?med verification
 
 - **WikEM acquired:** `wikem_en_all_maxi_2026-07.zim` (375 MB) into

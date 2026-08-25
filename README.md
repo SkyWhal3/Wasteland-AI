@@ -55,15 +55,19 @@ evening for the offline-library demo that sells the whole idea.
 
 Ten people starting at Tier A beat one person forever refining Tier C.
 
-| Tier | Cash | Power | What it runs | Winter honesty |
+| Tier | Cash (power side) | Power | What it runs | Winter honesty |
 |---|---|---|---|---|
 | **A — Garage** | $0–150 | A panel or power station you already own; salvaged battery as buffer | The Pi knowledge node, 24/7 most of the year | Browns out in a hard December — fine; it's a library, not life support |
-| **B — Value** | ~$500 | 100 Ah LiFePO4 + 200 W panel + MPPT | Knowledge node + small-model AI sessions | Survives most winters with load discipline |
-| **C — December-proof** | ~$1,500 | 200 Ah self-heating LiFePO4 + 400 W array + Victron | The full stack, incl. the on-demand 70B box | Designed against the worst month — the [MANIFEST](00_DOCS/MANIFEST.md) §1 math is this tier |
+| **B — Value** | $400–700 | 100 Ah LiFePO4 + 200 W panel + MPPT | Knowledge node + small-model AI sessions | Survives most winters with load discipline |
+| **C — December-proof** | $1,100–1,900 | 200 Ah self-heating LiFePO4 + 400 W array + Victron | The full stack, incl. the on-demand 70B box | Designed against the worst month — the [MANIFEST](00_DOCS/MANIFEST.md) §1 math is this tier |
 
 If you only ever build Tier A — Pi + Kiwix + the medical ZIMs — **you
 already own the highest-value part of this entire project.** Everything
 past that is capability, not survival.
+
+Add ~$250 for the Pi node and ~$60–250 for radio gear to get all-in totals; the
+full breakdown, with the buy-today-vs-scavenge economics behind every number, is in
+the [BUILD GUIDE](00_DOCS/BUILD_GUIDE.md).
 
 ## The part worth arguing about
 
@@ -91,7 +95,8 @@ tree locally but *cannot* be committed by accident.
 | Path | What |
 |---|---|
 | [QUICKSTART.md](QUICKSTART.md) | **Start here.** Three on-ramps: 5-minute no-hardware, one-evening library demo, the full Pi build |
-| [00_DOCS/MANIFEST.md](00_DOCS/MANIFEST.md) | **The build doc.** December power math (with the GHI-vs-POA trap), 12 V/24 V fork, cold-Voc rules, battery economics, Meshtastic security reality check, build order |
+| [00_DOCS/BUILD_GUIDE.md](00_DOCS/BUILD_GUIDE.md) | **Build one — the money and the physics.** Tiers, battery economics (never buy a car battery for storage), the fake-MPPT warning, winter ops, the 12 V/24 V decision table, and the parking-lot salvage doctrine |
+| [00_DOCS/MANIFEST.md](00_DOCS/MANIFEST.md) | **The engineering reference.** December power math (with the GHI-vs-POA trap), 12 V/24 V fork, cold-Voc rules, battery economics, Meshtastic security reality check, build order |
 | [00_DOCS/SECURITY.md](00_DOCS/SECURITY.md) | Threat model: the radio keyhole, who can query you (allowlist), malware reality, login hardening, seizure trade-offs |
 | [00_DOCS/CODE_REVIEW_2026-08-25.md](00_DOCS/CODE_REVIEW_2026-08-25.md) | Adversarial review findings on the v1 scripts, and what was fixed |
 | [00_DOCS/APP_SHELF.md](00_DOCS/APP_SHELF.md) | Prepackaged software worth carrying: the five-point filter, the core/task shelves, the rejects (with reasons), and the A/B + signed update model |
