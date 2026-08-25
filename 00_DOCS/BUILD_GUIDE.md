@@ -466,15 +466,25 @@ after every hardware change.
 | | Tier A | Tier B | Tier C |
 |---|---|---|---|
 | Power | $0–150¹ | $400–700 | $1,100–1,900 |
-| Compute (Pi node) | ~$250 | ~$250 | ~$250 |
+| Compute (Pi node) | ~$430³ | ~$430³ | ~$430³ |
 | Comms (radio+antenna+coax) | ~$60–120 | ~$120–200 | ~$150–250 |
-| AI workstation | — | optional +$1,500 | optional +$1,500 |
-| **Total, no workstation** | **~$310–520** | **~$770–1,150** | **~$1,500–2,400** |
+| AI workstation | — | optional +$1,500² | optional +$1,500² |
+| **Total, no workstation** | **~$490–700** | **~$950–1,330** | **~$1,680–2,580** |
 
 ¹ assuming an owned panel or power station.
 
 ² The AI workstation row assumes buying new. A mini PC or laptop you already own,
 plus RAM, very often covers it — see §7.
+
+³ **2026 DRAM-shortage pricing** (verified 2026-08): AI-datacenter demand
+repriced everything with RAM in it. The Pi 5 16GB went $120 → $305; a 2×32 GB
+DDR4 SODIMM kit went ~$120 → $345–600. This row was ~$250 before the shortage
+and Raspberry Pi calls the increases temporary — **check current prices before
+buying**, consider used RAM (plus a memtest86 pass), and note that none of
+this touches panels, batteries, radios, antennas, or cables. The build does
+not need the Pi on day one: every script in this repo runs on any computer
+you already own, and the Pi is the low-power deployment vessel, not the
+development machine.
 
 ---
 

@@ -65,7 +65,8 @@ If you only ever build Tier A — Pi + Kiwix + the medical ZIMs — **you
 already own the highest-value part of this entire project.** Everything
 past that is capability, not survival.
 
-Add ~$250 for the Pi node and ~$60–250 for radio gear to get all-in totals; the
+Add ~$430 for the Pi node (2026 DRAM-shortage pricing — ~$250 before it;
+BUILD_GUIDE §13 has the details) and ~$60–250 for radio gear to get all-in totals; the
 full breakdown, with the buy-today-vs-scavenge economics behind every number, is in
 the [BUILD GUIDE](00_DOCS/BUILD_GUIDE.md).
 
