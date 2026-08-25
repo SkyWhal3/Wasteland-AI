@@ -100,6 +100,7 @@ tree locally but *cannot* be committed by accident.
 | [00_DOCS/SECURITY.md](00_DOCS/SECURITY.md) | Threat model: the radio keyhole, who can query you (allowlist), malware reality, login hardening, seizure trade-offs |
 | [00_DOCS/CODE_REVIEW_2026-08-25.md](00_DOCS/CODE_REVIEW_2026-08-25.md) | Adversarial review findings on the v1 scripts, and what was fixed |
 | [02_CORPORA/skills/](02_CORPORA/skills/) | **Skills** — procedures that tell a small model what to *ask* before it answers, which file to open, and what it must never invent. The layer that gives it field judgment |
+| [00_DOCS/STORAGE.md](00_DOCS/STORAGE.md) | Sizing and the decade problem: what the corpus actually costs, why RAID is not backup and RAID10 cannot detect rot, and why an array does not fit in a solar power budget |
 | [00_DOCS/APP_SHELF.md](00_DOCS/APP_SHELF.md) | Prepackaged software worth carrying: the five-point filter, the core/task shelves, the rejects (with reasons), and the A/B + signed update model |
 | [00_DOCS/FUTURE_FEDERATION.md](00_DOCS/FUTURE_FEDERATION.md) | Where this goes next: specialist nodes exchanging hash-cited knowledge claims over LoRa — design sketch, strictly post-boot territory |
 | [05_SCRIPTS/](05_SCRIPTS/) | The working code (below) — see its [README](05_SCRIPTS/README.md) for Pi setup, step by step |

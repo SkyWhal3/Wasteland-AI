@@ -5,6 +5,35 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (latest+6) — Yamaha, the Generac wall, and STORAGE.md
+
+- **Yamaha EF2000iS** collected (archive.org) — the other camping standard
+  alongside the Honda EU. Moves from gap to covered.
+- **Modern Generac 9–26 kW: five attempts, all refused.** Generac's own CDN
+  truncates; the Norwall PIM mirror truncates identically; electricgenerators-
+  direct returns 403. `fetch_doc.py` refused every one, so nothing corrupt
+  entered the archive — but the document is genuinely missing and is now
+  logged as a **browser job** with known-good sources named, not as a vague
+  gap. Worth noting the tool did exactly its job five times in a row.
+- **NEW `00_DOCS/STORAGE.md`**, answering the RAID10 question with measured
+  numbers. The three findings worth keeping:
+  1. **Everything that keeps a person alive fits in ~60 GB.** A single 2 TB
+     NVMe holds the full library, toolchain and every runnable model. Storage
+     is not this project's constraint; collection effort and power are.
+  2. **RAID10 cannot detect silent corruption.** Two copies, no checksums,
+     no way to know which is right when they disagree — and a rebuild can
+     propagate the bad one. For a decade-scale archive the answer is a
+     checksumming filesystem (ZFS/btrfs), or two plain drives plus
+     `verify_checksums.py`, which is detect-and-repair done by hand and works
+     on any OS with no special hardware.
+  3. **An array does not fit the power budget.** Four spinning drives are
+     20–40 W continuous = 480–960 Wh/day against ~1,020 Wh/day of December
+     production. RAID is a grid-tied answer, so storage splits by power
+     domain: redundant master on mains, single-NVMe node off-grid holding
+     nothing unique, cold copy on **spinning rust — not SSD**, because
+     unpowered NAND leaks charge and fails silently in a drawer.
+- Bit-rot index rebuilt.
+
 ## 2026-08-25 (latest+5) — engines, battery skill, adaptive context, credits
 
 Acting on Grok's field-scenario review plus the contributor and context
