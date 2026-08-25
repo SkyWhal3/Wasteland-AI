@@ -7,6 +7,8 @@ meshtastic_probe.py — read-only health check for any Meshtastic node on USB.
     python meshtastic_probe.py --port COM7      # probe a specific port
     python meshtastic_probe.py --backup         # probe, then save the node's full
                                                 #   config to 04_CONFIG/meshtastic/
+    python meshtastic_probe.py --listen 120     # antenna RX check: sit silent for
+                                                #   N seconds and grade what's heard
     python meshtastic_probe.py --raw            # also dump everything we could read
 
 WHY THIS EXISTS:
@@ -223,6 +225,131 @@ def worst_status(rows: list[tuple[str, str, str]]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# RX quality — the "LoRa speedtest", receive half. Pure functions first so the
+# grading is testable without a radio; the listener that feeds them is below.
+# ---------------------------------------------------------------------------
+
+def summarize_rx(samples: list[dict], seconds: float) -> dict:
+    """
+    Boil packet samples ({'node': id, 'rssi': dBm, 'snr': dB}) down to stats.
+    RSSI = raw received power; SNR = how far above the noise the signal sits.
+    LoRa demodulates below the noise floor, so SNR down to about -20 dB is
+    still a working link — that's the magic of the modulation.
+    """
+    rssis = sorted(s["rssi"] for s in samples if s.get("rssi") is not None)
+    snrs = sorted(s["snr"] for s in samples if s.get("snr") is not None)
+    per_node: dict = {}
+    for s in samples:
+        node = s.get("node") or "?"
+        best = per_node.get(node)
+        if best is None or (s.get("snr") is not None
+                            and (best.get("snr") is None or s["snr"] > best["snr"])):
+            per_node[node] = {"snr": s.get("snr"), "rssi": s.get("rssi")}
+    mid = len(rssis) // 2
+    return {
+        "seconds": seconds,
+        "packets": len(samples),
+        "unique_nodes": len(per_node),
+        "per_node": per_node,
+        "rssi_min": rssis[0] if rssis else None,
+        "rssi_med": rssis[mid] if rssis else None,
+        "rssi_max": rssis[-1] if rssis else None,
+        "snr_best": snrs[-1] if snrs else None,
+        "pkt_per_min": round(len(samples) / (seconds / 60.0), 1) if seconds else 0.0,
+    }
+
+
+def grade_rx(summary: dict) -> tuple[str, str]:
+    """
+    (verdict, plain English) from an RX summary. Honest thresholds:
+
+    - SILENT: zero over-the-air packets. On a metro mesh that is almost
+      never real quiet — suspect the antenna path (or a truly dead hour).
+    - WEAK: packets arrive, but only from one or two very strong nodes.
+      That is the classic broken-antenna signature: a bare IPEX pad still
+      hears the neighbor's rooftop node, and nothing else.
+    - GOOD: multiple distinct nodes heard. The RF front end, pigtail, and
+      antenna are doing their jobs — and since antennas are reciprocal,
+      an antenna that receives well almost certainly transmits well.
+    """
+    if summary["packets"] == 0:
+        return ("SILENT", "heard nothing over the air. Either the mesh is in a "
+                          "dead hour or the antenna path is broken - listen "
+                          "longer, and if still silent, open the case and check "
+                          "the IPEX pigtail is seated on the board.")
+    if summary["unique_nodes"] <= 2:
+        return ("WEAK", "only heard the loudest neighbor(s). A damaged antenna "
+                        "still hears strong local nodes - compare with a "
+                        "known-good session before trusting this antenna.")
+    return ("GOOD", f"{summary['unique_nodes']} distinct nodes heard - the "
+                    "antenna is receiving properly, and reciprocity says it "
+                    "transmits properly too.")
+
+
+def listen_rx(port: str, seconds: int) -> dict | None:
+    """
+    Passive RX monitor: open the node, TRANSMIT NOTHING, and tally every
+    packet that arrives over the air for N seconds. This is the safe half of
+    an antenna check — you can run it on a suspect antenna without risking
+    the power amplifier, because listening never keys the radio.
+    """
+    import time
+
+    from pubsub import pub
+    import meshtastic.serial_interface
+
+    samples: list[dict] = []
+    my_num = {"n": None}
+
+    def _on_rx(packet=None, interface=None):
+        if not isinstance(packet, dict):
+            return
+        # Only packets that actually crossed the air carry rx metrics;
+        # our own node's local packets do not count as reception.
+        if packet.get("from") == my_num["n"]:
+            return
+        rssi, snr = packet.get("rxRssi"), packet.get("rxSnr")
+        if rssi is None and snr is None:
+            return
+        samples.append({"node": packet.get("fromId") or packet.get("from"),
+                        "rssi": rssi, "snr": snr})
+
+    pub.subscribe(_on_rx, "meshtastic.receive")
+    print(f"Opening {port} for a {seconds}s silent listen (no transmissions)...")
+    iface = meshtastic.serial_interface.SerialInterface(devPath=port)
+    try:
+        my_num["n"] = getattr(getattr(iface, "myInfo", None), "my_node_num", None)
+        start = time.monotonic()
+        while time.monotonic() - start < seconds:
+            time.sleep(1)
+            elapsed = int(time.monotonic() - start)
+            if elapsed and elapsed % 15 == 0:
+                print(f"  ...{elapsed}s, {len(samples)} packets heard")
+    finally:
+        pub.unsubscribe(_on_rx, "meshtastic.receive")
+        iface.close()
+    return summarize_rx(samples, float(seconds))
+
+
+def render_rx(summary: dict) -> None:
+    verdict, why = grade_rx(summary)
+    print(f"\n=== RX check: {summary['packets']} packets / "
+          f"{summary['unique_nodes']} nodes in {int(summary['seconds'])}s "
+          f"({summary['pkt_per_min']}/min) ===")
+    if summary["packets"]:
+        print(f"  RSSI dBm  min {summary['rssi_min']} | median {summary['rssi_med']} "
+              f"| max {summary['rssi_max']}")
+        print(f"  best SNR  {summary['snr_best']} dB")
+        loudest = sorted(summary["per_node"].items(),
+                         key=lambda kv: (kv[1]["snr"] is not None, kv[1]["snr"]),
+                         reverse=True)[:5]
+        print("  loudest neighbors (best traceroute targets):")
+        for node, m in loudest:
+            print(f"    {node}  snr {m['snr']} dB  rssi {m['rssi']} dBm")
+    print(f"\n  verdict: {verdict} - {why}")
+
+
+# ---------------------------------------------------------------------------
 # Hardware side — everything below needs pyserial/meshtastic and a real node.
 # ---------------------------------------------------------------------------
 
@@ -428,6 +555,9 @@ def main() -> int:
     ap.add_argument("--list-ports", action="store_true", help="list serial ports and exit")
     ap.add_argument("--backup", action="store_true",
                     help="after probing, export full config to 04_CONFIG/meshtastic/")
+    ap.add_argument("--listen", type=int, metavar="SECONDS",
+                    help="passive antenna RX check: listen silently for N "
+                         "seconds and grade what was heard (transmits nothing)")
     ap.add_argument("--raw", action="store_true", help="also dump raw structures")
     args = ap.parse_args()
 
@@ -438,6 +568,19 @@ def main() -> int:
     port = pick_port(args.port)
     if not port:
         return 2
+
+    if args.listen:
+        try:
+            summary = listen_rx(port, args.listen)
+        except ImportError as e:
+            print(f"Missing radio dependency ({e}). In your venv: "
+                  "pip install -r requirements.txt")
+            return 2
+        except Exception as e:
+            print(f"Could not listen on {port}: {e}")
+            return 2
+        render_rx(summary)
+        return 0 if grade_rx(summary)[0] == "GOOD" else 1
 
     try:
         report, raw = probe(port)

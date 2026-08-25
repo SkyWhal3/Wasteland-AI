@@ -102,4 +102,33 @@ assert pos_rows and pos_rows[0][0] == "WARN"
 # A report where nothing could be read still renders SOMETHING and never crashes
 assert mp.evaluate({}) != []
 
+# ---------------------------------------------------------------------------
+# RX check (the antenna "speedtest"): summarize + grade, no radio needed
+# ---------------------------------------------------------------------------
+
+# A healthy metro-mesh listen: many packets, many distinct nodes
+busy = [{"node": f"!n{i % 7}", "rssi": -90 - i, "snr": 5.0 - i} for i in range(14)]
+s = mp.summarize_rx(busy, 120.0)
+assert s["packets"] == 14 and s["unique_nodes"] == 7
+assert s["rssi_min"] <= s["rssi_med"] <= s["rssi_max"]
+assert s["pkt_per_min"] == 7.0
+assert mp.grade_rx(s)[0] == "GOOD"
+
+# Dead air -> SILENT (and stats stay None instead of crashing)
+quiet = mp.summarize_rx([], 120.0)
+assert quiet["packets"] == 0 and quiet["rssi_med"] is None
+assert mp.grade_rx(quiet)[0] == "SILENT"
+
+# The broken-antenna signature: plenty of packets but only ONE loud node —
+# a bare IPEX pad still hears the strongest neighbor and nothing else
+one_loud = [{"node": "!rooftop", "rssi": -60, "snr": 12.0}] * 9
+assert mp.grade_rx(mp.summarize_rx(one_loud, 120.0))[0] == "WEAK"
+
+# Packets missing one metric (older firmware quirks) must not crash the math
+mixed = [{"node": "!a", "rssi": -100, "snr": None},
+         {"node": "!b", "rssi": None, "snr": -7.5},
+         {"node": "!c", "rssi": -88, "snr": 3.25}]
+m = mp.summarize_rx(mixed, 60.0)
+assert m["unique_nodes"] == 3 and m["snr_best"] == 3.25 and m["rssi_min"] == -100
+
 print("test_probe: all assertions passed")

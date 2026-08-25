@@ -107,8 +107,57 @@ channel (QR from step 5).
 4. Walk it: same room, then across the house, then down the block. Note
    where replies stop arriving; that's your first real range data point.
 
-## What the probe cannot check (yet)
+## The antenna check — the closest thing to a LoRa speedtest
 
-Real RF range, antenna health (SWR), and GPS fix quality. Those need field
-time and, for antennas, instruments we don't own. The probe proves the node
-is *configured* right — the walk test proves the radio *works*.
+There is no bandwidth to speed-test (LongFast moves text at roughly a
+kilobit); what you test instead is **can this radio hear the mesh, and can
+the mesh hear it back**. Do it in this order, because the order is the
+safety:
+
+**1. Passive listen first — transmits nothing, risks nothing.**
+
+```
+python meshtastic_probe.py --listen 120
+```
+
+Listening never keys the radio, so it is safe on a *suspect* antenna —
+which matters, because transmitting into a broken feedline reflects the
+power back into the amplifier (the 28 dBm paperweight scenario). Verdicts:
+
+- **GOOD** — multiple distinct nodes heard. Antennas are reciprocal: an
+  antenna that receives well transmits well. Cleared for step 3.
+- **WEAK** — packets only from one or two very loud nodes, often at SNR
+  near −20 dB (LoRa's decode floor). The classic damaged-feedline
+  signature: a bare connector still catches the strongest neighbor.
+- **SILENT** — nothing at all. Dead hour or dead antenna.
+
+Cross-check against the node's own memory: `lastHeard` timestamps in the
+node DB show *when reception stopped*, which dates the failure.
+
+**2. If WEAK/SILENT: location before surgery.** Move the radio to a window
+or outdoors and listen again — terrain and buildings can shadow a bench
+that a car ride hears fine from. Five minutes, zero risk, and it separates
+"bad spot" from "bad hardware."
+
+**3. Still deaf? The pigtail, not the nut.** On boards with an internal
+IPEX/U.FL pigtail to a bulkhead SMA (Heltec V4, T-Deck, most cased builds):
+when the bulkhead nut spins loose, the pigtail twists with it. Enough turns
+and the U.FL snap connector pops off the board or the thin coax shears at
+a crimp. Tightening the nut afterward fixes the *mechanical* problem and
+leaves the *RF* problem — a connector that "feels tight" says nothing about
+the path inside. Open the case (owner present if it's borrowed), reseat the
+U.FL until it clicks, inspect the pigtail for kinks, listen again. While
+the path is suspect, keep the radio powered off when not actively testing —
+a powered node beacons into whatever feedline it has, on its own schedule.
+
+**4. Only after RX grades GOOD: one round-trip.** Pick a loud neighbor from
+the listen output and traceroute it — this is the transmit half of the test
+and reports per-hop SNR in both directions:
+
+```
+python -m meshtastic --port COM13 --traceroute '!nodeid'
+```
+
+The real instrument for antenna health is a NanoVNA (~$60, measures SWR
+directly); until the group owns one, receive quality + one clean round-trip
+is the honest field test. Real RF *range* still needs the walk test.
