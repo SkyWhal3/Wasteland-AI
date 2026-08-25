@@ -5,6 +5,35 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (latest+3) — Layer 3 collection begins; v1.4 released
+
+- **v1.4 released** ("the skills layer"); v1.3 notes point forward. CI green.
+- **38 documents / ~95 MB collected**, all checksummed into CORPUS_INDEX the
+  same day (§15), all git-ignored — the repo ships blueprints, not vendor PDFs.
+  - `datasheets/power/`: **Victron VE.Direct protocol whitepaper** (the spec
+    power_monitor.py implements — the manifest's own named item), BlueSolar
+    MPPT 100/30 manual rev 12 + datasheet (the CS/ERR tables charging-triage
+    points at), NOCO Genius10, Krieger KR1100/1500/2000
+  - `datasheets/radio/`: **Semtech SX1261/2 datasheet rev 1.2** + AN1200.40
+    reference design, ESP32-S3 TRM + datasheet, and the full LilyGO T-Deck set
+    — board schematic, both GPS variants, and the 868-915 MHz antenna data
+  - `bootstrap/NEETS/`: **all 24 Navy electronics modules, 59 MB** (the
+    manifest's "best free resource on this list"). One module 404'd on the
+    first pass and was retried; 24/24 verified as real PDFs.
+- **INVENTORY datasheet paths corrected to the real filenames.** They had been
+  written aspirationally; every path now resolves to a file that exists, which
+  is the difference between `?find sx1262` working and `?find sx1262` lying.
+- Dogfooded `verify_checksums.py build` over 02_CORPORA: 56 files indexed.
+  First real bit-rot index in the archive.
+- **Blocked, needs a human with a browser:** Intel's CDN returns 403 to
+  automated requests, so the NUC11TN Technical Product Spec (WAI-0005) is
+  marked PENDING in the inventory rather than silently missing. It matters
+  because it carries the DC input range that decides whether the NUC can run
+  off the battery through a boost converter instead of an inverter.
+- Not collected: generator manuals. No generator is owned yet, so
+  generator-service still points at `<model>` placeholders by design — that
+  shelf gets filled when there is a machine to fill it for.
+
 ## 2026-08-25 (latest+2) — all eight skills + context metering
 
 - **Seven more skills written**, completing the roster: solar-commissioning,
