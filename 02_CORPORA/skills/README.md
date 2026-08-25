@@ -99,6 +99,7 @@ matching does the same job semantically.
 | `vehicle-wont-start` | Crank / no-crank split, then the FSM page pointer | written |
 | `water-source-decision` | Source → hazard class → which table (pointer-only, fenced) | written |
 | `wound-triage` | Assessment order + red flags, then the article (pointer-only, fenced) | written |
+| `battery-health` | Capacity loss by chemistry; sulfation, equalization limits, LiFePO4 BMS behaviour (fenced) | written |
 
 Adding one? Follow the format, keep it shorter than you want to, and put the
 most common cause first — that's where the value is.

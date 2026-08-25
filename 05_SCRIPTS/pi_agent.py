@@ -69,7 +69,11 @@ EXAMPLES_DIR = Path(__file__).resolve().parent / "agent_examples"
 MAX_STEPS = 12                # hard ceiling per task
 RUN_TIMEOUT_S = 30            # run_python wall-clock limit
 MAX_TOOL_OUTPUT = 2000        # chars of tool output fed back to the model
-AGENT_NUM_CTX = 8192          # context window to REQUEST from Ollama. Set
+AGENT_NUM_CTX = "auto"        # "auto" = size it from the model's trained
+                              # window and the RAM actually free right now
+                              # (see context_meter.recommend_ctx), or pin an
+                              # integer. Context window REQUESTED from Ollama.
+                              # Set
                               # explicitly on purpose: Ollama's own default is
                               # much smaller than most models support, and an
                               # agent loop fills a window fast. Too small and
@@ -190,6 +194,9 @@ TOOLS = {
 
 # ------------------------------- the loop -----------------------------------
 
+_num_ctx = 8192      # resolved at task start; _chat sends it to Ollama
+
+
 def _chat(messages: list) -> tuple:
     """Returns (content, prompt_tokens, generated_tokens). The counts come
     from Ollama itself, so they are exact rather than estimated."""
@@ -197,7 +204,7 @@ def _chat(messages: list) -> tuple:
                       json={"model": AGENT_MODEL, "messages": messages,
                             "stream": False,
                             "options": {"temperature": 0.2,
-                                        "num_ctx": AGENT_NUM_CTX}},
+                                        "num_ctx": _num_ctx}},
                       timeout=600)
     r.raise_for_status()
     data = r.json()
@@ -223,15 +230,21 @@ def _log(entry: dict) -> None:
 def run_task(task: str) -> None:
     AGENT_ROOT.mkdir(parents=True, exist_ok=True)
     limits = context_meter.model_limits(AGENT_MODEL, OLLAMA_URL)
-    ctx_limit = AGENT_NUM_CTX
+    if AGENT_NUM_CTX == "auto":
+        rec = context_meter.recommend_ctx(AGENT_MODEL, OLLAMA_URL)
+        ctx_limit = rec["recommended"] or 8192
+        note = rec.get("why", "")
+    else:
+        ctx_limit = int(AGENT_NUM_CTX)
+        note = "pinned in the config block"
+    globals()["_num_ctx"] = ctx_limit
     print(f"Sandbox: {AGENT_ROOT}")
-    print(f"Context: requesting {context_meter.human(AGENT_NUM_CTX)}"
+    print(f"Context: {context_meter.human(ctx_limit)}"
           + (f" of a {context_meter.human(limits['trained'])} model"
              if limits["trained"] else "")
-          + "   (run context_meter.py for details)")
-    if limits["trained"] and AGENT_NUM_CTX > limits["trained"]:
-        print(f"  NOTE: more than this model was trained for "
-              f"({context_meter.human(limits['trained'])}). Lower AGENT_NUM_CTX.")
+          + (f"   ({note})" if note else ""))
+    if limits["trained"] and ctx_limit > limits["trained"]:
+        print("  NOTE: that is more than this model was trained for.")
     print(f"Task:    {task}\n")
     _log({"event": "task_start", "task": task, "model": AGENT_MODEL})
 

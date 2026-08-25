@@ -81,6 +81,8 @@ RETRIEVAL_ONLY_DOMAINS = {
         "series or parallel", "string voltage", "voltage drop",
         "wire run", "conductor size", "panel string", "parallel strings",
         "battery cable", "inverter cable", "charge current", "c-rate",
+        "equalization voltage", "equalize at", "equalization charge",
+        "specific gravity", "desulfat",
     ],
     "structural": [
         "load bearing", "span for", "joist", "beam size", "rafter",
@@ -187,6 +189,13 @@ SKILL_TRIGGERS = {
         "wont crank", "no crank", "cranks but", "starter motor", "jump start",
         "check engine", "immobiliser", "immobilizer", "my truck", "my car",
         "alternator", "engine dies", "stalls",
+    ],
+    "battery-health": [
+        "wont hold charge", "will not hold charge", "lost capacity",
+        "half capacity", "sulfation", "sulfated", "equalize", "equalization",
+        "desulfator", "specific gravity", "hydrometer", "distilled water",
+        "dies overnight", "battery is dying", "load test", "dead cell",
+        "flooded battery", "agm battery", "battery age",
     ],
     "charging-triage": [
         "not charging", "wont charge", "will not charge", "no charge current",
@@ -318,6 +327,10 @@ SKILL_TEST = [
     ("is creek water safe to drink?",         "water-source-decision", "RETRIEVAL_ONLY"),
     ("deep cut on my hand, does it need stitches?",
                                               "wound-triage",      "RETRIEVAL_ONLY"),
+    ("my flooded batteries only hold half capacity",
+                                              "battery-health",    "GENERAL_MODEL"),
+    ("what equalization voltage for a flooded battery?",
+                                              "battery-health",    "RETRIEVAL_ONLY"),
     ("how do i repair a jacket zipper?",      None,                "RAG"),
 ]
 

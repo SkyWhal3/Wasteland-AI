@@ -111,7 +111,8 @@ tree locally but *cannot* be committed by accident.
 | `lora_oracle.py` | The mesh bot: `?power` `?med` `?find` `?ask`, DM-only, 200-char cap, rate-limited, allowlisted. `--demo` = the bot at your keyboard, no radio |
 | `safety_router.py` | Classifies every question before any model runs; `--test` is the executable contract |
 | `pi_agent.py` | Minimal agentic coding loop jailed to a scratch SSD (ships disabled — read its docstring) |
-| `context_meter.py` | The model's real context window vs what Ollama actually gives it — catches silent truncation |
+| `context_meter.py` | The model's real context window vs what Ollama gives it, and what your RAM can actually afford — catches silent truncation |
+| `fetch_doc.py` | Downloads documents into the archive and refuses to save a truncated one |
 | `make_skeleton.py` | Rebuilds the full folder tree after a bare clone |
 
 ## Status
@@ -133,6 +134,11 @@ witnesses. No better first contribution exists:
 - [#3 — Your kiwix version](https://github.com/SkyWhal3/Wasteland-AI/issues/3): `--demo` + kiwix-serve, five minutes, no radio
 
 **Run it. Break it. File issues.**
+
+## Credits
+
+Built by one human and four AI models arguing in public — who did what, and
+why GitHub's contributor graph cannot show it, is in [CREDITS.md](CREDITS.md).
 
 ## License
 

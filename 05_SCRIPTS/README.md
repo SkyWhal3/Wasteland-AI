@@ -1,6 +1,6 @@
 # OFFGRID Starter Code — Setup Guide (step by step)
 
-Seven small scripts that turn the manifest into a running system:
+Eight small scripts that turn the manifest into a running system:
 
 | Script | What it does | Needs |
 |---|---|---|
@@ -10,6 +10,7 @@ Seven small scripts that turn the manifest into a running system:
 | `safety_router.py` | Classifies questions into retrieval-only / artifact-lookup / RAG / model before any AI runs (`--test` = self-check) | nothing |
 | `pi_agent.py` | Minimal coding agent, jailed to a scratch drive. **Ships disabled.** | Ollama + a coder model |
 | `context_meter.py` | Shows the model's real context window vs what Ollama actually gives it, and formats the usage readout | Ollama (for live numbers) |
+| `fetch_doc.py` | Downloads a document into the archive and **refuses to save a truncated one** | nothing |
 | `make_skeleton.py` | Rebuilds the full §13 folder tree after a bare clone | nothing |
 
 These are **starter examples**: commented for beginners, safe by default
@@ -163,7 +164,7 @@ python safety_router.py "what's the pinout of the sx1262?"
 # -> ARTIFACT_LOOKUP: return filename + page from the datasheet tree.
 
 python safety_router.py --test
-# -> 28 canonical routings + skill matches, PASS/FAIL.
+# -> 30 canonical routings + skill matches, PASS/FAIL.
 #    Run after every keyword edit; add your new expectation to the table.
 ```
 

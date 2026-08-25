@@ -5,6 +5,54 @@ same-day Layer 0 row (manifest §15 — no exceptions).
 
 ---
 
+## 2026-08-25 (latest+5) — engines, battery skill, adaptive context, credits
+
+Acting on Grok's field-scenario review plus the contributor and context
+questions.
+
+- **`fetch_doc.py`** — the truncation lesson productized. Validates HTTP
+  status, Content-Length, `%PDF` header AND `%%EOF` trailer before writing
+  anything into the archive, and says plainly that a refused download is the
+  correct outcome. Used for everything below.
+- **Engine-level manuals** (`datasheets/power/engines/`): Honda
+  GX120/GX160/GX200 owner's, the **Honda GX160 SERVICE manual** (teardown
+  level, 11.8 MB — the prize), and three Briggs & Stratton operator manuals.
+  Rationale, now written into GENERATOR_INDEX: in the wasteland the badge
+  falls off and you are left with an engine. Clone engines (Predator,
+  Champion, 168F/170F) follow the GX pattern closely enough that its service
+  manual is often the best procedure available — with the standing caveat
+  that the numbers are Honda's until confirmed against the clone's own docs.
+- **generator-service: the full spark procedure**, per Grok's scenario. Wire
+  and boot inspection → continuity check with a meter (including the flex
+  test that finds a broken conductor inside intact insulation) → grounded-plug
+  spark test with the vapour warning → reading the plug → the no-spark branch.
+  Number-free throughout; plug gap, coil resistance and coil air gap all route
+  back to the manual. Also added an "if the basics were already ruled out"
+  branch so the checklist does not re-ask answered questions.
+- **NEW skill `battery-health`** (9th), for the flooded-lead-at-half-capacity
+  case. Chemistry-first, because equalization is routine on flooded, prohibited
+  on most AGM, and dangerous on lithium. Names sulfation-from-chronic-
+  undercharging as a *charging* problem wearing a *battery* costume, insists on
+  per-cell specific gravity over voltage, is honest that recovery odds are poor
+  on a months-dead bank, and refuses to endorse desulfator gadgets. All
+  equalization numbers retrieval-only; `equalization voltage` / `specific
+  gravity` / `desulfat` added to the electrical fence. Router now 30/30.
+- **Adaptive context.** `context_meter.recommend_ctx()` now computes the actual
+  fp16 KV-cache cost from the model's own reported architecture
+  (2 x layers x kv_heads x head_dim x ctx x 2 bytes) against RAM free right
+  now, and picks the largest power-of-two window fitting in 25% of it.
+  `pi_agent` defaults to `AGENT_NUM_CTX = "auto"`. Answers the 32k/64k/128k
+  question with arithmetic instead of a rule of thumb — and documents why
+  bigger is not automatically better: KV RAM and prefill time are both linear
+  in context, and long-context attention degrades in the middle.
+- **NEW `CREDITS.md`** — what each model actually contributed. GitHub's
+  contributor graph only counts commits matched to registered accounts, so
+  Co-Authored-By trailers are real permanent commit metadata but will never
+  populate the sidebar. That is fair rather than broken: a graph counts
+  commits, and it could never have shown that Grok's contribution was an
+  argument that changed a design.
+- Bit-rot index rebuilt: 74 files.
+
 ## 2026-08-25 (latest+4) — the generator shelf
 
 Collected for machines you might **encounter**, not only machines you own —

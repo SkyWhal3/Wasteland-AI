@@ -129,6 +129,123 @@ def model_limits(model: str, url: str = OLLAMA_URL) -> dict:
     return out
 
 
+# --------------------- how big a window can you afford? ---------------------
+# The honest answer is arithmetic, not a rule of thumb. A KV cache holds one
+# key and one value vector per token per layer, so:
+#
+#   bytes = 2 (K and V) x layers x kv_heads x head_dim x tokens x 2 (fp16)
+#
+# It grows LINEARLY with context. Doubling the window doubles the RAM, and on
+# a Pi that RAM is not there. Ollama reports every term of that equation, so
+# the recommendation below is computed rather than guessed.
+
+def kv_cache_bytes(model: str, ctx: int, url: str = OLLAMA_URL) -> int:
+    """Estimated fp16 KV cache for `ctx` tokens. 0 if the model does not
+    report enough architecture detail."""
+    try:
+        r = requests.post(f"{url}/api/show", json={"model": model}, timeout=10)
+        r.raise_for_status()
+        info = r.json().get("model_info") or {}
+    except (requests.RequestException, ValueError):
+        return 0
+
+    def get(suffix):
+        for k, v in info.items():
+            if k.endswith(suffix):
+                try:
+                    return int(v)
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    layers = get(".block_count")
+    heads = get(".attention.head_count")
+    kv_heads = get(".attention.head_count_kv") or heads
+    embed = get(".embedding_length")
+    if not all((layers, heads, kv_heads, embed)):
+        return 0
+    head_dim = embed // heads
+    return 2 * layers * kv_heads * head_dim * ctx * 2
+
+
+def available_ram() -> int:
+    """Bytes of RAM actually free right now. 0 if we cannot tell."""
+    try:                                        # Linux / Raspberry Pi OS
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    try:                                        # Windows
+        import ctypes
+
+        class MS(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+        m = MS()
+        m.dwLength = ctypes.sizeof(MS)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+            return int(m.ullAvailPhys)
+    except Exception:
+        pass
+    return 0
+
+
+# Never hand the KV cache more than this share of free RAM. The weights, the
+# OS, kiwix-serve and everything else still have to live somewhere, and on a
+# solar node an OOM kill is a power event as well as a crash.
+KV_RAM_SHARE = 0.25
+MIN_CTX = 4096
+
+
+def recommend_ctx(model: str, url: str = OLLAMA_URL) -> dict:
+    """Largest power-of-two window this machine can actually afford.
+
+    Bigger is not automatically better, and this deliberately does not just
+    max out the model:
+      * KV RAM is linear in context — 128k costs 32x what 4k costs
+      * prefill time is linear too, so a huge window makes every reply slower
+        even when you are not using it
+      * models degrade in the middle of very long contexts; an advertised
+        128k is rarely 128k of USEFUL attention
+    Retrieving the right 2k beats stuffing in 100k. Size for the job.
+    """
+    lim = model_limits(model, url)
+    trained = lim["trained"] or 0
+    ram = available_ram()
+    out = {"trained": trained, "configured": lim["configured"],
+           "ram_available": ram, "recommended": 0, "kv_bytes": 0,
+           "why": ""}
+    if not trained:
+        out["why"] = "model does not report a trained context length"
+        return out
+    if not ram:
+        out["recommended"] = min(trained, 8192)
+        out["why"] = "could not read available RAM — defaulting conservatively"
+        return out
+
+    budget = ram * KV_RAM_SHARE
+    ctx = MIN_CTX
+    while ctx * 2 <= trained and kv_cache_bytes(model, ctx * 2, url) <= budget:
+        ctx *= 2
+    out["recommended"] = ctx
+    out["kv_bytes"] = kv_cache_bytes(model, ctx, url)
+    if ctx >= trained:
+        out["why"] = "the model's full trained window fits comfortably"
+    else:
+        out["why"] = (f"RAM-limited: {human(trained)} would need "
+                      f"{kv_cache_bytes(model, trained, url)/1e9:.1f} GB of KV cache")
+    return out
+
+
 def list_models(url: str = OLLAMA_URL) -> list:
     try:
         r = requests.get(f"{url}/api/tags", timeout=10)
@@ -150,6 +267,16 @@ def report(model: str) -> None:
               f"   (what this Modelfile asks for)")
         if lim["trained"] and lim["configured"] < lim["trained"] / 2:
             print("  NOTE: you are using less than half the model's window.")
+    rec = recommend_ctx(model)
+    if rec["recommended"]:
+        kv = rec["kv_bytes"]
+        print(f"  RECOMMENDED       {human(rec['recommended'])}"
+              + (f"   (~{kv/1e6:.0f} MB of KV cache)" if kv else ""))
+        print(f"                    {rec['why']}")
+        if rec["ram_available"]:
+            print(f"  RAM free now      {rec['ram_available']/1e9:.1f} GB")
+    if lim["configured"]:
+        pass
     else:
         print("  pinned num_ctx    (none)   <-- Ollama's own default applies,")
         print("                             and it is much smaller than the")

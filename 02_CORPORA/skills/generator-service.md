@@ -62,10 +62,51 @@ Symptoms: starts on choke, dies off choke; or runs only at full throttle.
 Fresh fuel first, then the carburetor bowl, then the pilot jet. Old fuel is
 the second most common cause after the oil sensor.
 
-**4. Spark.** Pull the plug, look for fouling, check for spark against the
-block. Plug type and gap: **the manual** — do not accept a remembered value.
+**4. Spark — the full procedure, because this is where people stall.**
 
-**5. Only now** consider the carburetor, valve clearance, or the ignition coil.
+Work outward from the cheap end. **Fuel off and the area clear of vapour
+before you make any spark** — you are about to create an ignition source next
+to a machine full of petrol.
+
+  a. **Look at the plug wire and boot.** Cracked insulation, a chafed spot
+     where it rubs the frame, a boot that has gone hard, corrosion in the
+     terminal. A wire arcing to the block under load is invisible in daylight
+     and obvious in the dark with the engine running.
+  b. **Continuity check the wire** if you have a multimeter: probe each end.
+     An open circuit is a dead wire; a reading that jumps when you flex the
+     wire is a broken conductor inside intact insulation, which is the one
+     that wastes an afternoon.
+  c. **Grounded-plug spark test.** Pull the plug, reconnect it to its boot,
+     lay the metal body firmly against bare engine metal — clean metal, not
+     paint, not a fin edge — and crank. You are looking for a crisp blue
+     spark. Weak, yellow, or intermittent counts as a fail. Do not hold the
+     plug by anything but insulated pliers, and keep it away from the open
+     plug hole, which is venting fuel vapour while you crank.
+  d. **Read the plug while it is out.** Wet with fuel means you have fuel and
+     no ignition — half the diagnosis, free. Black and sooty points at
+     over-rich running, which above 5,000 ft points straight back at jetting.
+     Oily points at rings or valve guides.
+  e. **If there is no spark:** kill switch or its wiring shorted, low-oil
+     sensor holding ignition down, flywheel key sheared (the engine will also
+     kick back or run terribly), or a failed coil. Coil air gap, coil
+     resistance, and plug gap are **numbers, and numbers come from the
+     manual for this exact model.**
+
+**Plug type, plug gap, coil resistance, coil air gap: open the manual.** These
+are precisely the values a language model produces fluently and wrongly. If
+the manual is not on this node, the honest answer is that the procedure is
+known and the number is not.
+
+**5. Only now** consider the carburetor, valve clearance, or the ignition coil
+itself — all of which want the manual open anyway.
+
+### If the basics were already ruled out
+
+When someone has already confirmed oil level and appearance, fresh fuel,
+choke position, a free-spinning engine and a working recoil, **do not re-ask
+those questions.** Acknowledge it and go straight to (4) spark, then valve
+clearance, then compression. Re-asking answered questions is how a checklist
+becomes an insult.
 
 ## Oil
 
