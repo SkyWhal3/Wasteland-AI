@@ -67,15 +67,18 @@ INVENTORY_CANDIDATES = [
 OLLAMA_URL = "http://127.0.0.1:11434"
 OLLAMA_MODEL = None                # None = ?ask disabled (safe default)
 
-# Who may use this oracle. None = OPEN MODE: any node that can DM you gets
-# answers — fine on the bench, and the script warns loudly at startup.
-# For a deployed node, set your people's node NUMBERS, e.g. {305419896,
-# 862533815} — everyone else is silently ignored (zero airtime, logged
-# locally). Numbers come from this script's startup line or
-# `meshtastic --nodes`. Why it matters: ?power reveals whether anyone is
-# home and how much reserve you have; ?find reveals what you own.
-# See 00_DOCS/SECURITY.md.
-AUTHORIZED_SENDERS: set[int] | None = None
+# Who may use this oracle. Three settings, in hardening order:
+#   None        OPEN (bench default): anyone can query; loud warning at boot.
+#   "*"         OPEN, EXPLICITLY: same behavior, but on record as a choice.
+#               Configs written with "*" will survive a future release where
+#               the default flips to deny-all (planned production posture —
+#               see 00_DOCS/SECURITY.md).
+#   {123, 456}  ALLOWLIST (deployed): only these node numbers get replies;
+#               everyone else gets silence (zero airtime) + a local log line.
+# Node numbers come from this script's startup line or `meshtastic --nodes`.
+# Why it matters: ?power reveals whether anyone is home and how much reserve
+# you have; ?find reveals what you own.
+AUTHORIZED_SENDERS: set[int] | str | None = None
 
 MAX_LOG_BYTES = 1_000_000          # oracle.log rotates past this (SD cards die)
 # ---------------------------------------------------------------------------
@@ -307,10 +310,12 @@ def handle(text: str) -> str:
 # --------------------------- mesh plumbing ----------------------------------
 
 def _authorized(sender: int) -> bool:
-    """OPEN MODE (None) lets anyone query; an allowlist admits only your
-    people. Denials are silent on the radio (airtime is a commons) and
-    logged locally so you can see who's knocking."""
-    return AUTHORIZED_SENDERS is None or sender in AUTHORIZED_SENDERS
+    """None or "*" = open; a set admits only its members. Denials are
+    silent on the radio (airtime is a commons) and logged locally so you
+    can see who's knocking."""
+    if AUTHORIZED_SENDERS is None or AUTHORIZED_SENDERS == "*":
+        return True
+    return sender in AUTHORIZED_SENDERS
 
 
 def on_receive(packet, interface):  # pubsub callback signature — names matter
@@ -397,7 +402,11 @@ def main():
         print("WARNING: OPEN MODE — AUTHORIZED_SENDERS is not set, so ANY node\n"
               "on the mesh can query this oracle (?power reveals battery state,\n"
               "?find reveals inventory). Fine on a bench. Set the allowlist\n"
-              "before this node lives on a real mesh — see 00_DOCS/SECURITY.md.")
+              "before this node lives on a real mesh — see 00_DOCS/SECURITY.md.\n"
+              "(A future release makes deny-all the default; write \"*\" if\n"
+              "open is truly what you want.)")
+    elif AUTHORIZED_SENDERS == "*":
+        print('OPEN MODE by explicit config ("*") — anyone on the mesh can query.')
 
     try:
         while True:

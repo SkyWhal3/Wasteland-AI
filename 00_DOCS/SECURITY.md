@@ -17,7 +17,11 @@ Yes — that's the point — but through a keyhole, on purpose:
   feature would be a deliberate design change, not a config flip.)
 - **Who can query it is now a config decision:** `AUTHORIZED_SENDERS` in
   the oracle's config block. `None` = open mode (bench testing) with a loud
-  startup warning. Set it to your people's node numbers before the node
+  startup warning; `"*"` = open **on purpose and on record**; a set of node
+  numbers = deployed allowlist. **Planned production posture:** a future
+  release flips the default to deny-all, so open-mode will require the
+  explicit `"*"` — write `"*"` today if open is genuinely what you want,
+  and your config survives the flip. Set the allowlist before the node
   lives on a real mesh, because:
   - `?power` tells a stranger your battery reserve and, over days, your
     consumption pattern — that's **occupancy intelligence**.

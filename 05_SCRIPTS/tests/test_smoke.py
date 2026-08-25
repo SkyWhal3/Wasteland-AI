@@ -65,8 +65,10 @@ with tempfile.TemporaryDirectory() as td:
     out = lora_oracle.cmd_power("")
     assert "STALE" in out, out
 
-    # oracle allowlist gate: open mode admits all; a set admits only members
+    # oracle allowlist gate: None and "*" admit all; a set admits only members
     assert lora_oracle._authorized(123) is True
+    lora_oracle.AUTHORIZED_SENDERS = "*"
+    assert lora_oracle._authorized(999) is True
     lora_oracle.AUTHORIZED_SENDERS = {42}
     assert lora_oracle._authorized(42) is True
     assert lora_oracle._authorized(123) is False
