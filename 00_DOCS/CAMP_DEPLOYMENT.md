@@ -108,10 +108,31 @@ board never sees a brownout.
   miles), the tree relays MAY run ROUTER for the weekend — set it at camp,
   **revert to CLIENT before coming home**, because a ground-level ROUTER in
   the city degrades the 131-node neighborhood mesh.
-- **MQTT stays OFF on every node. No exceptions.** Misconfigured MQTT
-  republishes mesh traffic — including private-channel positions — to
-  public internet brokers. It is the single most common way campers
-  accidentally livestream their campsite to the world.
+- **MQTT stays OFF on every node at camp. No exceptions in the field.**
+  Misconfigured MQTT republishes mesh traffic — including private-channel
+  positions — to public internet brokers. It is the single most common way
+  campers accidentally livestream their campsite to the world.
+
+### The deliberate exception — bridging two distant groups (the Utah door)
+
+MQTT is a **software toggle** in every Meshtastic node (Radio Config →
+MQTT) — no extra hardware, ever. It is how two meshes in different states
+exchange messages over the internet. Done deliberately, it is safe; the
+recipe is everything:
+
+1. Create a **dedicated bridge channel** (e.g. `XMAS`) with its own random
+   PSK, shared with the far group out-of-band. NOT the primary, NOT the
+   group channel.
+2. On **one** node per side (a home node with WiFi, never a pocket node):
+   enable MQTT, and set **uplink + downlink on the bridge channel ONLY**.
+   Every other channel keeps uplink/downlink OFF.
+3. **Position precision 0 (disabled) on the bridge channel.** Well-wishes
+   travel; coordinates do not.
+4. Messages stay end-to-end encrypted with the channel PSK even across the
+   public broker — but metadata (node IDs, timing) is visible, which is
+   why this runs on a throwaway channel from a fixed home node.
+5. **When the occasion ends, toggle MQTT off** and delete the bridge
+   channel. The door exists only while it's deliberately held open.
 
 ## The SOS reality
 

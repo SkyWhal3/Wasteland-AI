@@ -96,6 +96,35 @@ NET_URL = "https://api.anthropic.com/v1/messages"
 NET_TIMEOUT_S = 45
 NET_PROBE_TTL_S = 300              # re-probe the uplink at most this often
 
+# --- Outside-world messaging: ?sms and ?email ------------------------------
+# The door OUT of the mesh: DM "?sms ethan call mom im fine" and Ethan's
+# actual cell phone gets an actual SMS via Twilio over the camp uplink.
+# ?email is the same door with zero regulatory friction (SMTP). Both ship
+# DISABLED (empty contact lists, creds only from environment). Rules that
+# are code, not policy:
+#   * The node must run a REAL AUTHORIZED_SENDERS allowlist (a set of node
+#     numbers). Open-bench nodes do not message the outside world, period.
+#   * Recipients are NAMED CONTACTS from the dicts below. A raw phone
+#     number or address arriving over the air is never dialed, and phone
+#     numbers are never transmitted back over the air — names only.
+#   * SMS_MAX_PER_DAY caps spend and abuse; the counter survives restarts.
+# US reality check: application-to-person SMS needs a Twilio number
+# (~$1.15/mo) and A2P 10DLC registration (sole-proprietor path) for
+# reliable delivery; a trial account can text VERIFIED numbers only —
+# which for a family contact list is actually fine.
+SMS_CONTACTS: dict[str, str] = {}   # e.g. {"ethan": "+13035550123"} E.164
+EMAIL_CONTACTS: dict[str, str] = {} # e.g. {"ethan": "ethan@example.com"}
+SMS_MAX_PER_DAY = 20
+SMS_BODY_MAX = 150                  # one GSM-7 segment, minus our prefix
+SMS_STATE = Path("sms_state.json")  # daily counter + inbound-check cursor
+TWILIO_SID_ENV = "TWILIO_ACCOUNT_SID"
+TWILIO_TOKEN_ENV = "TWILIO_AUTH_TOKEN"
+TWILIO_FROM_ENV = "TWILIO_FROM_NUMBER"   # the rented number, E.164
+SMTP_HOST_ENV = "ORACLE_SMTP_HOST"       # e.g. smtp.gmail.com (app password)
+SMTP_USER_ENV = "ORACLE_SMTP_USER"
+SMTP_PASS_ENV = "ORACLE_SMTP_PASS"
+SMTP_PORT = 587
+
 # Who may use this oracle. Three settings, in hardening order:
 #   None        OPEN (bench default): anyone can query; loud warning at boot.
 #   "*"         OPEN, EXPLICITLY: same behavior, but on record as a choice.
@@ -145,8 +174,8 @@ def log(line: str) -> None:
 # ----------------------------- commands -------------------------------------
 
 def cmd_help(_arg: str) -> str:
-    return ("CMDS: ?power | ?med <q> | ?find <part> | ?ask <q> | ?net. "
-            "?med is retrieval-only. NET:=frontier AI:=local. Library at node WiFi.")
+    return ("CMDS: ?power ?med ?find ?ask ?net ?sms <name> <msg> ?email. "
+            "?med=retrieval-only. NET:=frontier AI:=local. Library at node WiFi.")
 
 
 def cmd_power(_arg: str) -> str:
@@ -312,10 +341,10 @@ _NET_STATE = {"ok": False, "at": 0.0}   # cached probe result
 
 def net_up(force: bool = False) -> bool:
     """Is the internet reachable RIGHT NOW? Cached for NET_PROBE_TTL_S so a
-    down uplink doesn't add a timeout to every ?ask. Any HTTP response at all
-    (even a 4xx) proves DNS + TCP + TLS work; only a transport error is 'down'."""
-    if NET_BACKEND is None:
-        return False
+    down uplink doesn't add a timeout to every command. Any HTTP response at
+    all (even a 4xx) proves DNS + TCP + TLS work; only a transport error is
+    'down'. Pure connectivity — callers decide what to do with it (?ask
+    checks NET_BACKEND separately; ?sms/?email need only the pipe)."""
     now = time.monotonic()
     if not force and now - _NET_STATE["at"] < NET_PROBE_TTL_S:
         return _NET_STATE["ok"]
@@ -375,6 +404,177 @@ def cmd_net(_arg: str) -> str:
             f"{'' if key_ok else ' | key missing'} | ?ask -> {brain}")
 
 
+# ----------------------- outside-world messaging ---------------------------
+
+def _allowlist_active() -> bool:
+    """True only when AUTHORIZED_SENDERS is a real, non-empty set of node
+    numbers. None (open bench) and "*" (explicitly open) both fail — a node
+    that answers strangers does not get to message the outside world."""
+    return isinstance(AUTHORIZED_SENDERS, set) and len(AUTHORIZED_SENDERS) > 0
+
+
+def _sms_state() -> dict:
+    try:
+        return json.loads(SMS_STATE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _sms_state_save(d: dict) -> None:
+    try:
+        SMS_STATE.write_text(json.dumps(d))
+    except OSError:
+        pass                       # a broken counter must not break sending
+
+
+def _sms_quota() -> tuple[int, str]:
+    """(sends so far today, today's date string) — UTC day, survives restarts."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    st = _sms_state()
+    return (st.get("count", 0) if st.get("date") == today else 0), today
+
+
+def _outside_gates(contacts: dict, kind: str) -> str | None:
+    """The gate sequence shared by ?sms and ?email. Returns a refusal string,
+    or None if clear to proceed. Order matters — config gates come before
+    the network probe so an unconfigured node never touches the network."""
+    if not _allowlist_active():
+        return (f"{kind}: needs an AUTHORIZED_SENDERS allowlist on this "
+                "node. Open nodes don't message the outside world.")
+    if not contacts:
+        return f"{kind}: no contacts configured on this node."
+    return None
+
+
+def cmd_sms(arg: str) -> str:
+    """?sms <name> <message>  |  ?sms check
+    Real SMS to a NAMED contact via Twilio, over whatever uplink exists.
+    'check' polls the Twilio number's inbox for replies (pull, not push —
+    Starlink CGNAT can't receive webhooks, and pull costs airtime only
+    when a human asks)."""
+    refusal = _outside_gates(SMS_CONTACTS, "SMS")
+    if refusal:
+        return refusal
+
+    sid = os.environ.get(TWILIO_SID_ENV)
+    token = os.environ.get(TWILIO_TOKEN_ENV)
+    from_num = os.environ.get(TWILIO_FROM_ENV)
+    if not (sid and token and from_num):
+        return "SMS: Twilio credentials not in this node's environment."
+
+    if arg.strip().lower() == "check":
+        return _sms_check(sid, token, from_num)
+
+    name, _, body = arg.partition(" ")
+    name, body = name.lower().strip(), body.strip()
+    if not name or not body:
+        return "Usage: ?sms <name> <message>  or  ?sms check"
+    if name not in SMS_CONTACTS:
+        return f"SMS: unknown contact '{name}'. Known: {', '.join(sorted(SMS_CONTACTS))}"
+
+    count, today = _sms_quota()
+    if count >= SMS_MAX_PER_DAY:
+        return f"SMS: daily cap reached ({SMS_MAX_PER_DAY}). Resets midnight UTC."
+    if not net_up():
+        return "SMS: no uplink right now. Message NOT sent - retry when ?net says UP."
+
+    body = body[:SMS_BODY_MAX]
+    try:
+        r = requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+            auth=(sid, token),
+            data={"To": SMS_CONTACTS[name], "From": from_num,
+                  "Body": f"[camp mesh] {body}"},
+            timeout=30)
+    except requests.RequestException:
+        _NET_STATE.update(ok=False, at=time.monotonic())
+        return "SMS: uplink died mid-send. NOT confirmed sent."
+    if r.status_code != 201:
+        log(f"SMS to {name} failed: HTTP {r.status_code} {r.text[:200]}")
+        return f"SMS: Twilio refused (HTTP {r.status_code}). See node log."
+    _sms_state_save({"date": today, "count": count + 1,
+                     "last_check": _sms_state().get("last_check", "")})
+    log(f"SMS sent to contact '{name}' ({count + 1}/{SMS_MAX_PER_DAY} today)")
+    return f"SMS sent to {name} ({count + 1}/{SMS_MAX_PER_DAY} today)."
+
+
+def _sms_check(sid: str, token: str, from_num: str) -> str:
+    """Pull inbound SMS newer than the last check. Numbers are reverse-mapped
+    to contact names; unknown senders show as 'unknown' — no numbers over
+    the air, ever."""
+    if not net_up():
+        return "SMS: no uplink right now."
+    try:
+        r = requests.get(
+            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+            auth=(sid, token),
+            params={"To": from_num, "PageSize": 10},
+            timeout=30)
+        r.raise_for_status()
+        msgs = r.json().get("messages", [])
+    except (requests.RequestException, ValueError):
+        return "SMS: could not reach Twilio inbox."
+    st = _sms_state()
+    last = st.get("last_check", "")
+    by_number = {v: k for k, v in SMS_CONTACTS.items()}
+    fresh = []
+    newest = last
+    for m in msgs:
+        if m.get("direction") != "inbound":
+            continue
+        sent = m.get("date_sent") or m.get("date_created") or ""
+        if sent <= last:
+            continue
+        newest = max(newest, sent)
+        who = by_number.get(m.get("from", ""), "unknown")
+        fresh.append(f"{who}: {m.get('body', '')}")
+    if not fresh:
+        return "SMS inbox: nothing new."
+    st.update(last_check=newest)
+    _sms_state_save(st)
+    return "INBOX | " + " | ".join(reversed(fresh))
+
+
+def cmd_email(arg: str) -> str:
+    """?email <name> <message> — same door as ?sms, zero regulatory friction:
+    plain SMTP with an app password. The reliable path while 10DLC paperwork
+    pends, and free forever after."""
+    refusal = _outside_gates(EMAIL_CONTACTS, "EMAIL")
+    if refusal:
+        return refusal
+    host = os.environ.get(SMTP_HOST_ENV)
+    user = os.environ.get(SMTP_USER_ENV)
+    pw = os.environ.get(SMTP_PASS_ENV)
+    if not (host and user and pw):
+        return "EMAIL: SMTP credentials not in this node's environment."
+    name, _, body = arg.partition(" ")
+    name, body = name.lower().strip(), body.strip()
+    if not name or not body:
+        return "Usage: ?email <name> <message>"
+    if name not in EMAIL_CONTACTS:
+        return f"EMAIL: unknown contact '{name}'. Known: {', '.join(sorted(EMAIL_CONTACTS))}"
+    if not net_up():
+        return "EMAIL: no uplink right now. NOT sent - retry when ?net says UP."
+    import smtplib
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["From"] = user
+    msg["To"] = EMAIL_CONTACTS[name]
+    msg["Subject"] = "[camp mesh] message relayed from the field"
+    msg.set_content(body + "\n\n(sent over LoRa mesh -> camp gateway; "
+                           "replies are not monitored continuously)")
+    try:
+        with smtplib.SMTP(host, SMTP_PORT, timeout=30) as s:
+            s.starttls()
+            s.login(user, pw)
+            s.send_message(msg)
+    except (smtplib.SMTPException, OSError) as e:
+        log(f"EMAIL to {name} failed: {e}")
+        return "EMAIL: send failed. See node log."
+    log(f"EMAIL sent to contact '{name}'")
+    return f"EMAIL sent to {name}."
+
+
 def cmd_ask(question: str) -> str:
     """The model path — but the FENCE ROUTES FIRST, before any brain, local
     or cloud. Then: frontier model when the uplink is up and configured
@@ -418,7 +618,8 @@ def cmd_ask(question: str) -> str:
 
 
 COMMANDS = {"?help": cmd_help, "?power": cmd_power, "?med": cmd_med,
-            "?find": cmd_find, "?ask": cmd_ask, "?net": cmd_net}
+            "?find": cmd_find, "?ask": cmd_ask, "?net": cmd_net,
+            "?sms": cmd_sms, "?email": cmd_email}
 
 
 def handle(text: str) -> str:

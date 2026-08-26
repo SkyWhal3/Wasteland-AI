@@ -52,6 +52,28 @@ with tempfile.TemporaryDirectory() as td:
     # ?net reports the shipped-disabled state without probing anything
     assert "disabled" in lora_oracle.handle("?net")
 
+    # ?sms/?email — the outside-world door. Gate ONE is allowlist mode, so
+    # every assertion here resolves before any network could be touched.
+    r = lora_oracle.handle("?sms ethan call mom im fine")
+    assert r.startswith("SMS: needs an AUTHORIZED_SENDERS"), r
+    r = lora_oracle.handle("?email ethan hi")
+    assert r.startswith("EMAIL: needs an AUTHORIZED_SENDERS"), r
+    # explicitly-open "*" is STILL refused — open nodes don't text the world
+    lora_oracle.AUTHORIZED_SENDERS = "*"
+    assert lora_oracle.handle("?sms ethan hi").startswith("SMS: needs"), "star"
+    # allowlist active but nothing configured -> config gates, still offline
+    lora_oracle.AUTHORIZED_SENDERS = {123}
+    try:
+        assert lora_oracle.handle("?sms ethan hi").startswith("SMS: no contacts")
+        lora_oracle.SMS_CONTACTS["ethan"] = "+15555550100"
+        assert "credentials" in lora_oracle.handle("?sms ethan hi")
+        lora_oracle.EMAIL_CONTACTS["ethan"] = "e@example.com"
+        assert "credentials" in lora_oracle.handle("?email ethan hi")
+    finally:
+        lora_oracle.AUTHORIZED_SENDERS = None
+        lora_oracle.SMS_CONTACTS.clear()
+        lora_oracle.EMAIL_CONTACTS.clear()
+
     # pi_agent jail (pointed at the temp dir): escape refused, inside allowed
     pi_agent.AGENT_ROOT = tmp / "sandbox"
     pi_agent.AGENT_ROOT.mkdir()

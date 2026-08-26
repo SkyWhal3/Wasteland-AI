@@ -50,7 +50,39 @@ GENERAL_MODEL, covered by a self-test); INGESTION intent is fenced, and
 "mushroom" fences outright. Router self-test extended 30 → 34 cases, all
 passing. Open question for chat-mode: fold into `medical`, or stand alone?
 
-## 4. Minor: ?net information disclosure
+## 4. NEW CAPABILITY CLASS: outside-world messaging (?sms / ?email)
+
+This is the first path from the mesh to the PSTN/email world — a bigger
+step than the ?ask gateway, so the gates are code, not policy, and layered:
+
+1. **Allowlist-mode required**: refuses unless AUTHORIZED_SENDERS is a
+   real non-empty set. None AND "*" both refuse — a node that answers
+   strangers cannot message the outside world. (This creates the first
+   functional difference between "open" and "allowlisted" beyond logging.)
+2. **Named contacts only**: recipients resolve from SMS_CONTACTS /
+   EMAIL_CONTACTS dicts set at deployment. A raw phone number or address
+   arriving over the air is never used; numbers are never transmitted back
+   over the air (reverse-mapped to names, unknowns say "unknown").
+3. **Daily send cap** (SMS_MAX_PER_DAY=20) persisted across restarts.
+4. Credentials from environment only; ships with empty contact dicts.
+5. Inbound is PULL-only (?sms check) — no webhooks, no listener surface.
+
+For chat-mode: does outside-world messaging deserve its own MANIFEST
+section (alongside the uplink doctrine), and is allowlist-mode-required
+the right permanent posture? (I believe yes — it makes the allowlist the
+skeleton key for every privileged capability.)
+
+## 5. MQTT: flat prohibition refined into prohibition + controlled procedure
+
+CAMP_DEPLOYMENT's "MQTT off, no exceptions" gained a documented deliberate
+exception: a dedicated bridge channel (own PSK, position precision 0,
+uplink/downlink on that channel only, one home node per side, toggled off
+after the occasion) for deliberately linking two distant groups. Field
+rule unchanged: off at camp, always. Flagging because it softens an
+absolute I wrote — the absolute was one day old and the refinement adds
+the recipe that makes the rule followable rather than ignorable.
+
+## 6. Minor: ?net information disclosure
 
 ?net reveals uplink status and backend model name to any sender the oracle
 answers. Under an allowlist this is group-internal telemetry; in open bench
