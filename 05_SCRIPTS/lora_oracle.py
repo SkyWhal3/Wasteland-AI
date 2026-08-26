@@ -117,9 +117,14 @@ EMAIL_CONTACTS: dict[str, str] = {} # e.g. {"ethan": "ethan@example.com"}
 SMS_MAX_PER_DAY = 20
 SMS_BODY_MAX = 150                  # one GSM-7 segment, minus our prefix
 SMS_STATE = Path("sms_state.json")  # daily counter + inbound-check cursor
-TWILIO_SID_ENV = "TWILIO_ACCOUNT_SID"
-TWILIO_TOKEN_ENV = "TWILIO_AUTH_TOKEN"
+TWILIO_SID_ENV = "TWILIO_ACCOUNT_SID"    # AC... — always needed (URL path)
 TWILIO_FROM_ENV = "TWILIO_FROM_NUMBER"   # the rented number, E.164
+# Auth, preferred first: a RESTRICTED API key (SK... + secret, scoped to
+# Messages create+read only — revocable without rotating the account, and
+# can't touch billing) — else the classic account auth token.
+TWILIO_API_KEY_ENV = "TWILIO_API_KEY_SID"
+TWILIO_API_SECRET_ENV = "TWILIO_API_KEY_SECRET"
+TWILIO_TOKEN_ENV = "TWILIO_AUTH_TOKEN"
 SMTP_HOST_ENV = "ORACLE_SMTP_HOST"       # e.g. smtp.gmail.com (app password)
 SMTP_USER_ENV = "ORACLE_SMTP_USER"
 SMTP_PASS_ENV = "ORACLE_SMTP_PASS"
@@ -457,13 +462,17 @@ def cmd_sms(arg: str) -> str:
         return refusal
 
     sid = os.environ.get(TWILIO_SID_ENV)
-    token = os.environ.get(TWILIO_TOKEN_ENV)
     from_num = os.environ.get(TWILIO_FROM_ENV)
-    if not (sid and token and from_num):
+    key = os.environ.get(TWILIO_API_KEY_ENV)
+    secret = os.environ.get(TWILIO_API_SECRET_ENV)
+    token = os.environ.get(TWILIO_TOKEN_ENV)
+    auth = (key, secret) if (key and secret) else \
+           ((sid, token) if token else None)
+    if not (sid and from_num and auth):
         return "SMS: Twilio credentials not in this node's environment."
 
     if arg.strip().lower() == "check":
-        return _sms_check(sid, token, from_num)
+        return _sms_check(sid, auth, from_num)
 
     name, _, body = arg.partition(" ")
     name, body = name.lower().strip(), body.strip()
@@ -482,7 +491,7 @@ def cmd_sms(arg: str) -> str:
     try:
         r = requests.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
-            auth=(sid, token),
+            auth=auth,
             data={"To": SMS_CONTACTS[name], "From": from_num,
                   "Body": f"[camp mesh] {body}"},
             timeout=30)
@@ -498,7 +507,7 @@ def cmd_sms(arg: str) -> str:
     return f"SMS sent to {name} ({count + 1}/{SMS_MAX_PER_DAY} today)."
 
 
-def _sms_check(sid: str, token: str, from_num: str) -> str:
+def _sms_check(sid: str, auth: tuple, from_num: str) -> str:
     """Pull inbound SMS newer than the last check. Numbers are reverse-mapped
     to contact names; unknown senders show as 'unknown' — no numbers over
     the air, ever."""
@@ -507,7 +516,7 @@ def _sms_check(sid: str, token: str, from_num: str) -> str:
     try:
         r = requests.get(
             f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
-            auth=(sid, token),
+            auth=auth,
             params={"To": from_num, "PageSize": 10},
             timeout=30)
         r.raise_for_status()
