@@ -114,6 +114,24 @@ RETRIEVAL_ONLY_DOMAINS = {
         "generator to my house", "transfer switch", "interlock kit",
         "dryer outlet", "plug the generator into",
     ],
+    # PROVISIONAL eighth domain, added 2026-08-25 (session 2). The camp-trip
+    # use case — "found a plant/mushroom on a hike, what is it?" — walks
+    # straight into "can I eat it?", and misidentified mushrooms kill people
+    # every year (a death cap looks like a straw mushroom; a false morel
+    # looks like breakfast). Species IDENTIFICATION stays unfenced — naming
+    # a flower is not dangerous. INGESTION is fenced: any eat/edible/forage
+    # framing gets retrieval-only, and "mushroom" fences outright because in
+    # a survival context the next question is always dinner. Pure tightening;
+    # §9 formalization is the manifest owner's call, same as generator_safety.
+    "plant_edibility": [
+        "edible", "inedible", "safe to eat", "can i eat", "can you eat",
+        "can we eat", "eat this plant", "eat this mushroom", "eat the berries",
+        "mushroom", "toadstool", "puffball", "morel",
+        "forage", "foraging", "wild edible", "wild onion", "wild berries",
+        "are these berries", "berries safe",
+        "amanita", "death cap", "death camas", "hemlock", "nightshade",
+        "pokeweed",
+    ],
 }
 
 # Pattern fences — things plain substrings can't express safely.
@@ -309,6 +327,11 @@ SELF_TEST = [
     ("how to fix a leaky faucet?",                        "RAG"),
     ("tell me a joke about capacitors",                   "GENERAL_MODEL"),
     ("what's the best 9mm holster material?",             "GENERAL_MODEL"),
+    ("is this mushroom edible?",                          "RETRIEVAL_ONLY"),
+    ("can I eat these wild berries?",                     "RETRIEVAL_ONLY"),
+    ("found morels on the hike, how do i cook them?",     "RETRIEVAL_ONLY"),
+    # identification WITHOUT ingestion stays open — naming a flower is safe
+    ("what species is this purple five-petal flower?",    "GENERAL_MODEL"),
 ]
 
 

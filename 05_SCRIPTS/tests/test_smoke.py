@@ -37,6 +37,21 @@ with tempfile.TemporaryDirectory() as td:
     d = safety_router.route("what's the best 9mm holster material?")
     assert d.route == "GENERAL_MODEL", d
 
+    # ?ask gateway: the fence routes BEFORE any brain, cloud or local — a
+    # fenced question never reaches a model, and none of this needs network
+    r = lora_oracle.handle("?ask is this mushroom edible?")
+    assert r.startswith("FENCED (plant_edibility)"), r
+    r = lora_oracle.handle("?ask pediatric ibuprofen dose?")
+    assert r.startswith("FENCED (medical)") and "?med" in r, r
+    r = lora_oracle.handle("?ask what's the pinout of the sx1262?")
+    assert r.startswith("Spec/part question"), r
+    # unfenced question, both brains unconfigured -> honest refusal, no crash
+    assert lora_oracle.NET_BACKEND is None and lora_oracle.OLLAMA_MODEL is None
+    r = lora_oracle.handle("?ask what species is this purple flower?")
+    assert r.startswith("ASK: no uplink"), r
+    # ?net reports the shipped-disabled state without probing anything
+    assert "disabled" in lora_oracle.handle("?net")
+
     # pi_agent jail (pointed at the temp dir): escape refused, inside allowed
     pi_agent.AGENT_ROOT = tmp / "sandbox"
     pi_agent.AGENT_ROOT.mkdir()

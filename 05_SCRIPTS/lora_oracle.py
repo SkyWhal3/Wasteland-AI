@@ -8,8 +8,12 @@ Commands (send as a DIRECT MESSAGE to this node):
   ?power             battery/solar snapshot  (reads power_monitor.py's latest.json)
   ?med <query>       RETRIEVAL-ONLY medical lookup from Kiwix (WikEM) — no AI
   ?find <query>      look up a part in INVENTORY.csv (Layer 0, manifest §7.1)
-  ?ask <question>    small local model via Ollama — OFF until configured, and
-                     always labeled "AI:" because model output is not a source
+  ?ask <question>    a model, behind the fence — OFF until configured. With an
+                     uplink (Starlink at camp) and NET_BACKEND set, a frontier
+                     model answers, labeled "NET:". Otherwise local Ollama,
+                     labeled "AI:". The safety_router routes BEFORE either —
+                     fenced domains get no model answer from any brain.
+  ?net               uplink status: which brain answers ?ask right now
 
 Design rules, enforced in code (not vibes):
   * DM-ONLY. Channel messages are ignored — this bot cannot spam the mesh.
@@ -29,12 +33,15 @@ from __future__ import annotations
 import csv
 import html
 import json
+import os
 import queue
 import re
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+import safety_router  # the fence runs BEFORE any brain, local or cloud
 
 try:
     import requests
@@ -66,6 +73,28 @@ INVENTORY_CANDIDATES = [
 # ?ask stays disabled until you set a model, e.g. "qwen2.5:3b" pulled in Ollama.
 OLLAMA_URL = "http://127.0.0.1:11434"
 OLLAMA_MODEL = None                # None = ?ask disabled (safe default)
+
+# --- Uplink backend: ?ask via a frontier model WHEN the internet exists ----
+# The gateway play (00_DOCS/CAMP_DEPLOYMENT.md): a hiker with a $30 node and
+# no phone signal DMs the oracle; if the camp Starlink is up, the answer
+# comes from a frontier model and is labeled "NET:"; the moment the dish
+# sleeps, ?ask falls back to the local Ollama model ("AI:") with no config
+# change. Two invariants, enforced in code:
+#   1. The safety fence routes the question BEFORE any brain sees it. The
+#      six-plus fenced domains are retrieval-only no matter how smart the
+#      backend is — a frontier model produces a *plausible* med dose, and
+#      plausible-but-unverified is exactly what the fence exists to block.
+#   2. The uplink is treated as temporary by design. Every net path has a
+#      local fallback; nothing breaks when the internet goes away.
+# Ships disabled (None), same rule as OLLAMA_MODEL. The API key comes from
+# the environment variable named below — never from this file, which is why
+# this file can live in a public repo.
+NET_BACKEND = None                 # None = local-only node; "anthropic" = on
+NET_MODEL = "claude-opus-5"        # current Anthropic model id (2026-08)
+NET_KEY_ENV = "ANTHROPIC_API_KEY"  # env var holding the key
+NET_URL = "https://api.anthropic.com/v1/messages"
+NET_TIMEOUT_S = 45
+NET_PROBE_TTL_S = 300              # re-probe the uplink at most this often
 
 # Who may use this oracle. Three settings, in hardening order:
 #   None        OPEN (bench default): anyone can query; loud warning at boot.
@@ -116,8 +145,8 @@ def log(line: str) -> None:
 # ----------------------------- commands -------------------------------------
 
 def cmd_help(_arg: str) -> str:
-    return ("CMDS: ?power | ?med <q> | ?find <part> | ?ask <q>. "
-            "?med is retrieval-only (WikEM). Full text at the node's WiFi.")
+    return ("CMDS: ?power | ?med <q> | ?find <part> | ?ask <q> | ?net. "
+            "?med is retrieval-only. NET:=frontier AI:=local. Library at node WiFi.")
 
 
 def cmd_power(_arg: str) -> str:
@@ -276,14 +305,105 @@ def cmd_find(query: str) -> str:
     return f"Not in inventory: '{query}'"
 
 
+# --------------------------- uplink gateway ---------------------------------
+
+_NET_STATE = {"ok": False, "at": 0.0}   # cached probe result
+
+
+def net_up(force: bool = False) -> bool:
+    """Is the internet reachable RIGHT NOW? Cached for NET_PROBE_TTL_S so a
+    down uplink doesn't add a timeout to every ?ask. Any HTTP response at all
+    (even a 4xx) proves DNS + TCP + TLS work; only a transport error is 'down'."""
+    if NET_BACKEND is None:
+        return False
+    now = time.monotonic()
+    if not force and now - _NET_STATE["at"] < NET_PROBE_TTL_S:
+        return _NET_STATE["ok"]
+    try:
+        requests.head("https://api.anthropic.com", timeout=4)
+        ok = True
+    except requests.RequestException:
+        ok = False
+    _NET_STATE.update(ok=ok, at=now)
+    return ok
+
+
+def _ask_net(question: str) -> str | None:
+    """One frontier-model call over the uplink, radio-shaped. Raw HTTP on
+    purpose: this project keeps dependencies minimal and version-bounded, and
+    the oracle already speaks plain requests to kiwix and Ollama. Returns None
+    if the model refused or produced nothing — caller falls back to local."""
+    key = os.environ.get(NET_KEY_ENV)
+    r = requests.post(
+        NET_URL,
+        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                 "content-type": "application/json"},
+        json={"model": NET_MODEL,
+              "max_tokens": 1000,   # covers adaptive thinking + the sentence
+              "system": ("You answer over a low-bandwidth field radio to "
+                         "someone off-grid. ONE plain sentence, max 160 "
+                         "characters, no markdown. If unsure, say so."),
+              "messages": [{"role": "user", "content": question}],
+              "output_config": {"effort": "low"}},
+        timeout=NET_TIMEOUT_S)
+    r.raise_for_status()
+    d = r.json()
+    # Frontier models can decline (stop_reason "refusal") — that's not an
+    # error; the local model gets its turn. No server-side fallback model on
+    # purpose: this system's fallback chain ends at the LOCAL brain, not at
+    # a second cloud model.
+    if d.get("stop_reason") == "refusal":
+        return None
+    text = " ".join(b.get("text", "") for b in d.get("content", [])
+                    if b.get("type") == "text").strip()
+    return text or None
+
+
+def cmd_net(_arg: str) -> str:
+    """Uplink status: which brain answers ?ask right now, and why."""
+    if NET_BACKEND is None:
+        return "NET: backend disabled - this is a local-only node by config."
+    key_ok = bool(os.environ.get(NET_KEY_ENV))
+    up = net_up(force=True)
+    if up and key_ok:
+        brain = f"{NET_MODEL} (frontier)"
+    elif OLLAMA_MODEL:
+        brain = f"{OLLAMA_MODEL} (local)"
+    else:
+        brain = "none - retrieval commands only"
+    return (f"NET: uplink {'UP' if up else 'DOWN'}"
+            f"{'' if key_ok else ' | key missing'} | ?ask -> {brain}")
+
+
 def cmd_ask(question: str) -> str:
-    """Optional small-model path. Output is ALWAYS labeled 'AI:' — model text
-    is an index into the library, never a source. Medical/reloading/canning/
-    electrical questions belong in the retrieval paths, not here."""
-    if OLLAMA_MODEL is None:
-        return "ASK disabled on this node. Use ?med / ?find, or the node's WiFi."
+    """The model path — but the FENCE ROUTES FIRST, before any brain, local
+    or cloud. Then: frontier model when the uplink is up and configured
+    (labeled 'NET:'), local Ollama otherwise (labeled 'AI:'). Model text is
+    an index into the library, never a source, whoever generated it."""
     if not question:
         return "Usage: ?ask <question>"
+
+    decision = safety_router.route(question)
+    if decision.route == "RETRIEVAL_ONLY":
+        # No model answers fenced questions — not the local one, not the
+        # frontier one. Same rule that keeps ?med retrieval-only.
+        hint = "?med <topic>" if decision.domain == "medical" else "the library at node WiFi"
+        return f"FENCED ({decision.domain}): no AI answer here by design. Source docs only - {hint}."
+    if decision.route == "ARTIFACT_LOOKUP":
+        return "Spec/part question - try ?find <part>, or the datasheet shelf at node WiFi."
+
+    if NET_BACKEND == "anthropic" and os.environ.get(NET_KEY_ENV) and net_up():
+        try:
+            text = _ask_net(question)
+            if text:
+                return "NET: " + text
+        except requests.RequestException:
+            _NET_STATE.update(ok=False, at=time.monotonic())
+            log("NET call failed mid-flight; falling back to local model")
+
+    if OLLAMA_MODEL is None:
+        return ("ASK: no uplink and no local model on this node. "
+                "?med / ?find still work, full library at node WiFi.")
     try:
         r = requests.post(f"{OLLAMA_URL}/api/generate",
                           json={"model": OLLAMA_MODEL,
@@ -298,7 +418,7 @@ def cmd_ask(question: str) -> str:
 
 
 COMMANDS = {"?help": cmd_help, "?power": cmd_power, "?med": cmd_med,
-            "?find": cmd_find, "?ask": cmd_ask}
+            "?find": cmd_find, "?ask": cmd_ask, "?net": cmd_net}
 
 
 def handle(text: str) -> str:
