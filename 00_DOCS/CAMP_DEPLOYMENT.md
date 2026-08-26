@@ -101,6 +101,12 @@ board never sees a brownout.
 
 ## Channels and roles
 
+- **The allowlist is a go/no-go gate: LIBR does not join a live mesh
+  until `AUTHORIZED_SENDERS` is a real, non-empty set of node numbers.**
+  Open mode (None or "*") is a bench convenience for Level-1 testing
+  only. Every world-reaching command (?sms, ?email, uplink status)
+  already refuses in open mode by code; this line makes it a deployment
+  rule too.
 - Primary: **LongFast, default key** — the public mesh, unchanged.
 - Secondary: **the group channel, custom random PSK**, created at home,
   shared by QR **in person, before the trip**. Position precision LOW.
@@ -118,21 +124,31 @@ board never sees a brownout.
 MQTT is a **software toggle** in every Meshtastic node (Radio Config →
 MQTT) — no extra hardware, ever. It is how two meshes in different states
 exchange messages over the internet. Done deliberately, it is safe; the
-recipe is everything:
+recipe is everything (hardened per external review, 2026-08-25):
 
 1. Create a **dedicated bridge channel** (e.g. `XMAS`) with its own random
    PSK, shared with the far group out-of-band. NOT the primary, NOT the
    group channel.
-2. On **one** node per side (a home node with WiFi, never a pocket node):
-   enable MQTT, and set **uplink + downlink on the bridge channel ONLY**.
-   Every other channel keeps uplink/downlink OFF.
-3. **Position precision 0 (disabled) on the bridge channel.** Well-wishes
-   travel; coordinates do not.
-4. Messages stay end-to-end encrypted with the channel PSK even across the
-   public broker — but metadata (node IDs, timing) is visible, which is
-   why this runs on a throwaway channel from a fixed home node.
-5. **When the occasion ends, toggle MQTT off** and delete the bridge
-   channel. The door exists only while it's deliberately held open.
+2. **Use a broker you control** (a Mosquitto container on the home node's
+   network is fine). If you cannot run your own broker, do not open the
+   door — the public Meshtastic broker sees your node IDs, timing, and
+   channel name even though message bodies stay PSK-encrypted.
+3. On **one** node per side (an ESP32 home node on WiFi, never a pocket
+   node): enable MQTT, and set **uplink + downlink per-channel, on the
+   bridge channel ONLY**. Then — before saving — read the channel list
+   back and confirm out loud: **"LongFast uplink OFF, downlink OFF; group
+   channel OFF, OFF."** The classic foot-gun is a global enable plus a
+   wrong assumption about which channels it grabbed.
+4. **Nothing but text on the bridge channel**: position precision 0 AND
+   telemetry/node-info uplink off. Precision 0 alone is necessary, not
+   sufficient — device telemetry and node-info packets leak too.
+5. **Time-box it with a named owner.** The door stays open for the
+   occasion — an evening, not a week — and ONE named person is
+   responsible for closing it.
+6. **Verify the cleanup.** After disable + delete, run
+   `meshtastic_probe.py` against the bridge node: it now grades an
+   MQTT-enabled node as a hard **FAIL**, so a clean probe IS the proof
+   the door is shut. "I turned it off" is a claim; a probe is a receipt.
 
 ## The SOS reality
 

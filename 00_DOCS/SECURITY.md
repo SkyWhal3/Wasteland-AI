@@ -92,6 +92,29 @@ you're home), your notes. Decide deliberately:
   has everything. LUKS (Linux) or VeraCrypt (cross-platform) container;
   the passphrase lives in heads, plural.
 
+## The allowlist is the skeleton key (standing principle)
+
+Adopted 2026-08-25, external review concurring: **any privileged
+capability requires `AUTHORIZED_SENDERS` to be a real, non-empty set.**
+`None` (open bench) and `"*"` (explicitly open) both refuse privileged
+commands — a node that answers strangers does not message the outside
+world, disclose the uplink, or spend anything.
+
+Capability classes, by blast radius:
+
+| Class | Open / `"*"` (bench only) | Allowlist required |
+|---|---|---|
+| Library | `?med`, `?find`, retrieval | — |
+| Telemetry | `?power` | `?net` (uplink presence is recon) |
+| World-reaching | — | `?sms`, `?email`, uplink-backed `?ask` |
+| Future actuators | — | anything spending money, RF, or state |
+
+**Every future privileged command inherits this by default.** It does not
+get re-litigated per feature: if it reaches beyond the node, it demands
+the allowlist. Related anti-pattern: the Twilio master auth token on a
+field node — use a restricted API key scoped to Messages; the master
+token is for limping through a console outage, then rotating back.
+
 ## The checklist
 
 - [ ] `AUTHORIZED_SENDERS` set before the oracle leaves the bench

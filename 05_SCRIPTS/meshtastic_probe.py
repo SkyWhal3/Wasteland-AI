@@ -210,6 +210,18 @@ def evaluate(report: dict) -> list[tuple[str, str, str]]:
     elif bt is False:
         rows.append(("INFO", "bluetooth", "off"))
 
+    # MQTT republishes mesh traffic to an internet broker. Off is the only
+    # acceptable steady state; a deliberate bridge (CAMP_DEPLOYMENT's "Utah
+    # door") is a time-boxed exception whose CLEANUP this check verifies —
+    # after any bridge, a probe must come back clean.
+    mqtt = report.get("mqtt_enabled")
+    if mqtt is True:
+        rows.append(("FAIL", "mqtt", "ENABLED - this node republishes mesh "
+                     "traffic to an internet broker. Off unless deliberately "
+                     "bridging (and off again the moment that ends)."))
+    elif mqtt is False:
+        rows.append(("PASS", "mqtt", "off"))
+
     heard = report.get("nodes_heard")
     if heard is not None:
         rows.append(("INFO", "mesh neighbors",
@@ -233,8 +245,10 @@ def summarize_rx(samples: list[dict], seconds: float) -> dict:
     """
     Boil packet samples ({'node': id, 'rssi': dBm, 'snr': dB}) down to stats.
     RSSI = raw received power; SNR = how far above the noise the signal sits.
-    LoRa demodulates below the noise floor, so SNR down to about -20 dB is
-    still a working link — that's the magic of the modulation.
+    LoRa demodulates below the noise floor — on the LongFast preset the
+    floor is about -20 dB SNR. That number is LONGFAST-TYPICAL, not a
+    universal LoRa constant: faster presets need much better SNR, slower
+    ones decode a little deeper. Grade against the preset you're running.
     """
     rssis = sorted(s["rssi"] for s in samples if s.get("rssi") is not None)
     snrs = sorted(s["snr"] for s in samples if s.get("snr") is not None)
@@ -261,29 +275,39 @@ def summarize_rx(samples: list[dict], seconds: float) -> dict:
 
 def grade_rx(summary: dict) -> tuple[str, str]:
     """
-    (verdict, plain English) from an RX summary. Honest thresholds:
+    (verdict, plain English) from an RX summary. Honest thresholds
+    (tightened per external review, 2026-08-25):
 
     - SILENT: zero over-the-air packets. On a metro mesh that is almost
       never real quiet — suspect the antenna path (or a truly dead hour).
-    - WEAK: packets arrive, but only from one or two very strong nodes.
-      That is the classic broken-antenna signature: a bare IPEX pad still
-      hears the neighbor's rooftop node, and nothing else.
-    - GOOD: multiple distinct nodes heard. The RF front end, pigtail, and
-      antenna are doing their jobs — and since antennas are reciprocal,
-      an antenna that receives well almost certainly transmits well.
+    - WEAK: only floor-scraping signal from at most one node. The classic
+      damaged-antenna signature: a bare IPEX pad still hears the loudest
+      rooftop neighbor, barely, and nothing else.
+    - GOOD: two-plus distinct nodes, OR one node with genuinely healthy
+      SNR (>= -8 dB) — because in RF-quiet terrain a single strong
+      neighbor is a working antenna, and grading it WEAK would send
+      someone to disassemble a healthy SMA.
+
+    RX-good implies TX-good only as a FIRST FILTER: reciprocity holds for
+    antennas, but water-filled coax, a connector that passes RX and arcs
+    on TX, or a twisted pigtail can all break the shortcut. The one-
+    traceroute-after-GOOD step in RADIO_BENCH_TEST.md is the proof.
     """
     if summary["packets"] == 0:
         return ("SILENT", "heard nothing over the air. Either the mesh is in a "
                           "dead hour or the antenna path is broken - listen "
                           "longer, and if still silent, open the case and check "
                           "the IPEX pigtail is seated on the board.")
-    if summary["unique_nodes"] <= 2:
-        return ("WEAK", "only heard the loudest neighbor(s). A damaged antenna "
-                        "still hears strong local nodes - compare with a "
-                        "known-good session before trusting this antenna.")
-    return ("GOOD", f"{summary['unique_nodes']} distinct nodes heard - the "
-                    "antenna is receiving properly, and reciprocity says it "
-                    "transmits properly too.")
+    best = summary.get("snr_best")
+    if summary["unique_nodes"] >= 2 or (best is not None and best >= -8):
+        return ("GOOD", f"{summary['unique_nodes']} node(s) heard, best SNR "
+                        f"{best} dB - the RX path works. Reciprocity suggests "
+                        "TX works too; confirm with ONE traceroute (a damaged "
+                        "feedline can pass RX and still fail TX).")
+    return ("WEAK", "a single node at the LongFast decode floor - the classic "
+                    "damaged-antenna signature. Compare with a known-good "
+                    "session (or listen from open ground) before trusting "
+                    "this antenna.")
 
 
 def listen_rx(port: str, seconds: int) -> dict | None:
@@ -453,6 +477,10 @@ def probe(port: str) -> tuple[dict, dict]:
         bt = getattr(cfg, "bluetooth", None)
         if bt is not None:
             report["bluetooth"] = bool(getattr(bt, "enabled", False))
+        mod = getattr(local, "moduleConfig", None)
+        mqtt = getattr(mod, "mqtt", None)
+        if mqtt is not None:
+            report["mqtt_enabled"] = bool(getattr(mqtt, "enabled", False))
 
         # --- channels ----------------------------------------------------
         channels = []

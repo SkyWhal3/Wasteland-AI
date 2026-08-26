@@ -119,10 +119,26 @@ quiet = mp.summarize_rx([], 120.0)
 assert quiet["packets"] == 0 and quiet["rssi_med"] is None
 assert mp.grade_rx(quiet)[0] == "SILENT"
 
-# The broken-antenna signature: plenty of packets but only ONE loud node —
-# a bare IPEX pad still hears the strongest neighbor and nothing else
+# Review-tightened rule: ONE node with genuinely healthy SNR is a working
+# antenna (RF-quiet terrain must not send anyone to disassemble a good SMA)
 one_loud = [{"node": "!rooftop", "rssi": -60, "snr": 12.0}] * 9
-assert mp.grade_rx(mp.summarize_rx(one_loud, 120.0))[0] == "WEAK"
+assert mp.grade_rx(mp.summarize_rx(one_loud, 120.0))[0] == "GOOD"
+
+# The actual damaged-antenna signature: a single node at the decode floor
+one_floor = [{"node": "!rooftop", "rssi": -112, "snr": -19.5}] * 4
+assert mp.grade_rx(mp.summarize_rx(one_floor, 120.0))[0] == "WEAK"
+
+# Two distinct nodes, even at the floor, prove the RX path passes RF
+two_floor = [{"node": "!a", "rssi": -113, "snr": -20.0},
+             {"node": "!b", "rssi": -111, "snr": -19.75}]
+assert mp.grade_rx(mp.summarize_rx(two_floor, 120.0))[0] == "GOOD"
+
+# MQTT: off is PASS, on is FAIL — the bridge-cleanup verification
+with_mqtt_off = dict(good, mqtt_enabled=False)
+assert any(r[0] == "PASS" and r[1] == "mqtt" for r in mp.evaluate(with_mqtt_off))
+with_mqtt_on = dict(good, mqtt_enabled=True)
+assert any(r[0] == "FAIL" and r[1] == "mqtt" for r in mp.evaluate(with_mqtt_on))
+assert mp.worst_status(mp.evaluate(with_mqtt_on)) == 1
 
 # Packets missing one metric (older firmware quirks) must not crash the math
 mixed = [{"node": "!a", "rssi": -100, "snr": None},

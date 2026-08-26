@@ -6,10 +6,21 @@ Run from anywhere:  python 05_SCRIPTS/tests/test_smoke.py
 Uses a temp directory for anything it writes; touches nothing in the repo.
 """
 import json
+import os
 import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Scrub real messaging credentials from THIS process before anything runs:
+# a dev box with live Twilio/SMTP env vars must never let a test suite past
+# the credential gates and onto the network. (Found the hard way — the only
+# thing that stopped a live API call was the test's deliberately fake
+# number. Tests prove gates; they must not depend on the machine's env.)
+for _var in ("TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET",
+             "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER",
+             "ORACLE_SMTP_HOST", "ORACLE_SMTP_USER", "ORACLE_SMTP_PASS"):
+    os.environ.pop(_var, None)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lora_oracle          # noqa: E402

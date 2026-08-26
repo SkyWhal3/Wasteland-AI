@@ -111,3 +111,26 @@ IPEX-pigtail failure mode) is written into RADIO_BENCH_TEST.md.
 Not in scope for review: live Twilio/SMS provisioning state (in
 progress, account-side), member identities, node IDs, contact data —
 deliberately absent from this public repo.
+
+---
+
+## Review outcome (same day) and disposition
+
+Verdict received: *"Session 2 is a tightening session. Nothing loosens a
+prior invariant. No blockers to v1.8."* Rulings and what happened next:
+
+| # | Ruling | Disposition |
+|---|---|---|
+| 1 | Both domains stay **standalone**; make "all fungi fenced" explicit in §9 | Adjudicated. §9 wording → manifest owner. Code already fences fungi outright. |
+| 2 | Allowlist-required is **permanent** for every privileged door; lock `?net` too | DONE: `?net` now discloses uplink status to allowlisted senders only; the standing principle + blast-radius table added to SECURITY.md; go/no-go line added to CAMP_DEPLOYMENT. |
+| 3 | Uplink doctrine is MANIFEST-worthy, five invariants as listed | → manifest owner; the code already behaves per all five. |
+| 4 | MQTT bridge recipe: name the broker, per-channel confirm, time-box + owner, no telemetry, verify cleanup | DONE: recipe rewritten as six steps; the probe now hard-FAILs an MQTT-enabled node, making a clean probe the cleanup receipt. |
+| 5 | SMS: per-contact cap, per-sender rate limit, drop names from ACKs, master token = anti-pattern, pull-only stays | DONE: per-contact daily cap (10) + node-wide send spacing (120 s — stricter than per-sender, without plumbing sender identity into handlers); ACK no longer repeats the contact name (mixed-firmware DMs can fall back to channel-key encryption); anti-pattern documented in code + SECURITY.md. Shared inbox documented as a property. |
+| 6 | RX grading: −20 dB is LongFast-typical not universal; GOOD = ≥2 nodes OR best SNR ≥ −8; reciprocity is a filter, not proof | DONE: grade rule, labels, and wording updated in code + bench doc; tests updated to the new semantics. |
+
+Bonus finding while applying the patches: the smoke test, run on a
+machine that now carries real Twilio credentials, sailed through the
+credential gate and made a live API call — stopped only by its
+deliberately fake phone number. The suite now scrubs all messaging
+credentials from its own process before running: tests prove gates, and
+must not depend on the machine they run on.

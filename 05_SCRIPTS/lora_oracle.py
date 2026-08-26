@@ -114,14 +114,19 @@ NET_PROBE_TTL_S = 300              # re-probe the uplink at most this often
 # which for a family contact list is actually fine.
 SMS_CONTACTS: dict[str, str] = {}   # e.g. {"ethan": "+13035550123"} E.164
 EMAIL_CONTACTS: dict[str, str] = {} # e.g. {"ethan": "ethan@example.com"}
-SMS_MAX_PER_DAY = 20
+SMS_MAX_PER_DAY = 20                # node-wide daily ceiling
+SMS_MAX_PER_CONTACT_PER_DAY = 10    # one contact can't absorb the whole budget
+SMS_MIN_INTERVAL_S = 120            # node-wide spacing: no outbound flood, even
+                                    # from an authorized sender in a loop
 SMS_BODY_MAX = 150                  # one GSM-7 segment, minus our prefix
 SMS_STATE = Path("sms_state.json")  # daily counter + inbound-check cursor
 TWILIO_SID_ENV = "TWILIO_ACCOUNT_SID"    # AC... — always needed (URL path)
 TWILIO_FROM_ENV = "TWILIO_FROM_NUMBER"   # the rented number, E.164
 # Auth, preferred first: a RESTRICTED API key (SK... + secret, scoped to
-# Messages create+read only — revocable without rotating the account, and
-# can't touch billing) — else the classic account auth token.
+# Messages only — revocable without rotating the account, and can't touch
+# billing). The account master token also works but is the documented
+# ANTI-PATTERN (review 2026-08-25): full account power on a field node.
+# Use it only to limp through a console outage, then go back to the key.
 TWILIO_API_KEY_ENV = "TWILIO_API_KEY_SID"
 TWILIO_API_SECRET_ENV = "TWILIO_API_KEY_SECRET"
 TWILIO_TOKEN_ENV = "TWILIO_AUTH_TOKEN"
@@ -397,6 +402,11 @@ def cmd_net(_arg: str) -> str:
     """Uplink status: which brain answers ?ask right now, and why."""
     if NET_BACKEND is None:
         return "NET: backend disabled - this is a local-only node by config."
+    if not _allowlist_active():
+        # Review finding (2026-08-25): on an open node, "the camp has live
+        # internet" is reconnaissance handed to strangers. Allowlisted
+        # senders get the real status; everyone else learns nothing.
+        return "NET: status is allowlist-only on this node. ?med and ?find always work."
     key_ok = bool(os.environ.get(NET_KEY_ENV))
     up = net_up(force=True)
     if up and key_ok:
@@ -432,11 +442,16 @@ def _sms_state_save(d: dict) -> None:
         pass                       # a broken counter must not break sending
 
 
-def _sms_quota() -> tuple[int, str]:
-    """(sends so far today, today's date string) — UTC day, survives restarts."""
+def _sms_quota() -> tuple[int, dict, str]:
+    """(node sends today, per-contact sends today, date string) — UTC day,
+    survives restarts. Two caps because they answer different abuse shapes:
+    the global cap bounds spend, the per-contact cap stops one chatty thread
+    from eating everyone's budget."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     st = _sms_state()
-    return (st.get("count", 0) if st.get("date") == today else 0), today
+    if st.get("date") != today:
+        return 0, {}, today
+    return st.get("count", 0), st.get("per", {}), today
 
 
 def _outside_gates(contacts: dict, kind: str) -> str | None:
@@ -481,9 +496,14 @@ def cmd_sms(arg: str) -> str:
     if name not in SMS_CONTACTS:
         return f"SMS: unknown contact '{name}'. Known: {', '.join(sorted(SMS_CONTACTS))}"
 
-    count, today = _sms_quota()
+    count, per, today = _sms_quota()
     if count >= SMS_MAX_PER_DAY:
         return f"SMS: daily cap reached ({SMS_MAX_PER_DAY}). Resets midnight UTC."
+    if per.get(name, 0) >= SMS_MAX_PER_CONTACT_PER_DAY:
+        return f"SMS: daily cap for that contact reached ({SMS_MAX_PER_CONTACT_PER_DAY})."
+    since_last = time.time() - _sms_state().get("last_send_ts", 0)
+    if since_last < SMS_MIN_INTERVAL_S:
+        return f"SMS: spacing - wait {int(SMS_MIN_INTERVAL_S - since_last)}s between texts."
     if not net_up():
         return "SMS: no uplink right now. Message NOT sent - retry when ?net says UP."
 
@@ -501,10 +521,15 @@ def cmd_sms(arg: str) -> str:
     if r.status_code != 201:
         log(f"SMS to {name} failed: HTTP {r.status_code} {r.text[:200]}")
         return f"SMS: Twilio refused (HTTP {r.status_code}). See node log."
-    _sms_state_save({"date": today, "count": count + 1,
+    per = dict(per); per[name] = per.get(name, 0) + 1
+    _sms_state_save({"date": today, "count": count + 1, "per": per,
+                     "last_send_ts": time.time(),
                      "last_check": _sms_state().get("last_check", "")})
     log(f"SMS sent to contact '{name}' ({count + 1}/{SMS_MAX_PER_DAY} today)")
-    return f"SMS sent to {name} ({count + 1}/{SMS_MAX_PER_DAY} today)."
+    # The ACK deliberately omits the contact name: the sender already typed
+    # it, and on a mixed-firmware mesh a DM can fall back to channel-key
+    # encryption — no names over the air that don't have to be.
+    return f"SMS sent ({count + 1}/{SMS_MAX_PER_DAY} today)."
 
 
 def _sms_check(sid: str, auth: tuple, from_num: str) -> str:

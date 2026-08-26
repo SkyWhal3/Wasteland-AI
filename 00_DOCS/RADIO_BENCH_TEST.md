@@ -124,12 +124,21 @@ Listening never keys the radio, so it is safe on a *suspect* antenna —
 which matters, because transmitting into a broken feedline reflects the
 power back into the amplifier (the 28 dBm paperweight scenario). Verdicts:
 
-- **GOOD** — multiple distinct nodes heard. Antennas are reciprocal: an
-  antenna that receives well transmits well. Cleared for step 3.
-- **WEAK** — packets only from one or two very loud nodes, often at SNR
-  near −20 dB (LoRa's decode floor). The classic damaged-feedline
-  signature: a bare connector still catches the strongest neighbor.
+- **GOOD** — two-plus distinct nodes heard, OR a single node with healthy
+  SNR (≥ −8 dB): in RF-quiet terrain one strong neighbor IS a working
+  antenna, and grading it weak would send someone to disassemble a good
+  SMA. Reciprocity says a receiving antenna transmits — but treat that as
+  a *first filter*, not proof: water-filled coax, a twisted pigtail, or a
+  connector that passes RX and arcs on TX all break the shortcut. Step 4
+  is the proof.
+- **WEAK** — only floor-scraping signal (SNR ≈ −20 dB, the **LongFast**
+  decode floor — faster presets need far better, slower go a bit deeper)
+  from at most one node. The classic damaged-feedline signature: a bare
+  connector still catches the strongest neighbor, barely.
 - **SILENT** — nothing at all. Dead hour or dead antenna.
+
+The probe also hard-FAILs any node with **MQTT enabled** — that's the
+cleanup receipt for the deliberate-bridge procedure in CAMP_DEPLOYMENT.
 
 Cross-check against the node's own memory: `lastHeard` timestamps in the
 node DB show *when reception stopped*, which dates the failure.
