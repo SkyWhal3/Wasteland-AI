@@ -86,6 +86,19 @@ The mesh is effectively free. The NUC is the real load and the dish is
 second — which is why the *architecture* assumes both can be off: the mesh
 and pocket nodes keep working when everything at the table is asleep.
 
+**Feeding the NUC from a battery — no inverter needed.** The NUC11TN
+board accepts **12–24 V DC (±5%)** per its Technical Product
+Specification (corroborated 2026-08-25 by two secondary sources quoting
+the TPS — the wall brick is 19 V ⎓ 6.32 A, just a mid-range point;
+**verify against the archived PDF before building the cable**, which is
+still a browser job). So: 12.8 V LiFePO4 → **inline 10 A fuse** → barrel
+plug (5.5 mm, **center positive** — meter it before first plug-in) →
+NUC. Zero conversion loss vs ~25–30% wasted through an inverter. Notes:
+at 12 V the NUC can draw up to ~10 A at full tilt, so 16 AWG wire, short
+run; the ±5% floor is 11.4 V, which a LiFePO4 only approaches in its
+last few percent — set the pack's low-voltage cutoff ≥11.8 V and the
+board never sees a brownout.
+
 ## Channels and roles
 
 - Primary: **LongFast, default key** — the public mesh, unchanged.
@@ -116,9 +129,13 @@ the dish. State that plainly to the group before the first hike.
       resumable: `curl.exe -L -C - -o <file>.part <same URL>` again
 - [x] Oracle gateway code: fence-first ?ask, NET/AI labeling, ?net
 - [ ] Place the Rokland order (T114s, batteries, antennas)
-- [ ] **Browser job, now trip-relevant**: Intel NUC11TN TechProdSpec PDF
-      (carries the DC input range = whether the NUC can run battery-direct
-      at camp or needs an inverter). generac 9-26kW while you're at it.
+- [~] **DC input range ANSWERED** (12–24 V ±5%, battery-direct is GO — see
+      power section) via two secondary sources quoting the TPS. The PDF
+      itself is STILL a browser job for the archive: intel.com 403s
+      automation; save NUC11TN_TechProdSpec.pdf into
+      02_CORPORA/datasheets/compute/ + a CORPUS_INDEX row, and confirm the
+      12–24 V line before building the battery cable. Generac 9-26kW while
+      you're at it.
 - [ ] Ask Joe: Starlink Mini power setup (battery? hours/day he'll run it)
 
 **T-7**
