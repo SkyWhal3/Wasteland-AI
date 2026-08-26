@@ -695,6 +695,40 @@ def cmd_email(arg: str) -> str:
     return f"EMAIL sent to {name}."
 
 
+# ------------------- skills: one-packet radio telegrams ---------------------
+# Every skill file in 02_CORPORA/skills/ carries a `radio_payload:` line in
+# its frontmatter — the "if only one packet gets through" version of its
+# procedure, written to the same rules as the skill itself (pointers and
+# categorical checks; the numbers stay in the manuals). When the router
+# matches a skill, the oracle serves that telegram instead of burning model
+# tokens on prose the skill already answers better. tests/test_skills.py
+# enforces the byte budget on every payload.
+SKILLS_DIR = Path(__file__).resolve().parent.parent / "02_CORPORA" / "skills"
+_SKILL_CACHE: dict[str, str | None] = {}
+
+
+def _skill_payload(name: str | None) -> str | None:
+    """The skill's frontmatter telegram, or None. Caches misses too, so the
+    radio worker never re-reads a file per query."""
+    if not name:
+        return None
+    if name not in _SKILL_CACHE:
+        payload, dashes = None, 0
+        try:
+            for line in (SKILLS_DIR / f"{name}.md").read_text(
+                    encoding="utf-8").splitlines():
+                if line.strip() == "---":
+                    dashes += 1
+                    if dashes == 2:
+                        break              # frontmatter only — never the body
+                elif line.startswith("radio_payload:"):
+                    payload = line.partition(":")[2].strip().strip('"') or None
+        except OSError:
+            pass                           # missing file = no telegram
+        _SKILL_CACHE[name] = payload
+    return _SKILL_CACHE[name]
+
+
 def cmd_ask(question: str) -> str:
     """The model path — but the FENCE ROUTES FIRST, before any brain, local
     or cloud. Then: frontier model when the uplink is up and configured
@@ -716,15 +750,34 @@ def cmd_ask(question: str) -> str:
         # frontier one. Same rule that keeps ?med retrieval-only. And a
         # fenced reply never multi-parts: the pointer IS the answer.
         _REPLY["mode"] = "ultra"
+        telegram = _skill_payload(decision.skill)
+        if telegram:
+            # File-backed pointer content, not model output: the fence stays
+            # intact and the reply gets useful. Warning tag rides packet 1.
+            return f"FENCED ({decision.domain}). {telegram}"
         hint = "?med <topic>" if decision.domain == "medical" else "the library at node WiFi"
         return f"FENCED ({decision.domain}): no AI answer here by design. Source docs only - {hint}."
     if decision.route == "ARTIFACT_LOOKUP":
         _REPLY["mode"] = "ultra"
         return "Spec/part question - try ?find <part>, or the datasheet shelf at node WiFi."
 
+    # A matched skill IS the answer on the radio: its telegram is the
+    # repo-authored, reviewable distillation of the procedure — one packet,
+    # zero model tokens, and it asks the disambiguating question a model
+    # never would. Library first, model second: the brains below now only
+    # field questions no procedure covers. (`?ask compact` does not override
+    # this — compact buys airtime for model prose, and a skill-matched
+    # question never reaches a model while its telegram exists.)
+    if decision.skill:
+        telegram = _skill_payload(decision.skill)
+        if telegram:
+            _REPLY["mode"] = "ultra"
+            return telegram
+
     # Honesty label (review harvest): when no skill/manual backs the answer,
     # say so in the label — a fluent paragraph with no source is an index
-    # entry, not a reference.
+    # entry, not a reference. (A skill match reaching this point means the
+    # skill file lost its radio_payload; the name still counts as a doc.)
     tag = "" if decision.skill else "(no doc)"
 
     if NET_BACKEND == "anthropic" and os.environ.get(NET_KEY_ENV) and net_up():

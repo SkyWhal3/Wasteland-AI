@@ -38,6 +38,8 @@ open_these:
   - "?find <part>  — the Layer 0 inventory lookup"
 never_generate: [the specific things a model must not invent here]
 fence: none | retrieval_only   # does §9 apply to any part of this?
+radio: ultra                   # mesh replies from a skill: one packet, always
+radio_payload: "THE TELEGRAM: the whole procedure's spine in one packet, <=200 bytes"
 human_verified: false
 ---
 
@@ -63,6 +65,21 @@ that a small model can hold it in context alongside the actual question.
    from the source.
 5. **`human_verified: false` until a person checks it against reality**, same
    as `seed_qa/`.
+
+## The radio telegram (`radio_payload`)
+
+Each skill carries the one-packet version of itself: the ordered spine of
+the procedure, compressed to a single ASCII line of **at most 200 bytes**
+(so it still fits one LoRa packet behind the longest `FENCED (...)` tag).
+When the router matches a skill, `lora_oracle` serves this telegram
+*instead of* model prose — the skill is the answer, the model only fields
+questions no procedure covers. The same rules apply at telegram scale:
+pointers and categorical checks, never a number ("spark test per manual",
+not a plug gap). `radio: ultra` declares that replies from this skill
+never multi-part; `tests/test_skills.py` enforces all of it in CI.
+
+The generator spark-test line is the house template: verb-first steps,
+semicolons, the manual named as the source of every number.
 
 ## Honest limitation — read this before trusting skills
 

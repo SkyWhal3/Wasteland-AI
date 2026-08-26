@@ -38,7 +38,12 @@ import sys
 import urllib.error
 import urllib.request
 
-UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) archival/1.0"}
+# A User-Agent alone is not enough everywhere: stacks.cdc.gov returns 403
+# to any request that omits an Accept header (found 2026-08-25). These are
+# headers every ordinary HTTP client sends; the UA still says archival.
+UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) archival/1.0",
+      "Accept": "application/pdf,application/octet-stream,*/*",
+      "Accept-Language": "en-US,en;q=0.9"}
 CHUNK = 65536
 RETRIES = 3
 TAIL = 2048          # how far from the end to look for the PDF trailer

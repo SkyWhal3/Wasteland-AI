@@ -23,6 +23,8 @@ never_generate:
   - a string configuration for a panel whose datasheet has not been read
   - cold-Voc results from memory (run the formula, show the arithmetic)
 fence: retrieval_only   # sizing is a fenced domain (electrical_sizing)
+radio: ultra            # mesh replies from this skill: one packet, always
+radio_payload: "SOLAR: cold-Voc vs controller MAX VOLTS decides everything - run the formula in WIRING_DIAGRAMS_SOLAR, stay under 80% of max. Battery to controller BEFORE panels. Meter PV polarity before landing."
 human_verified: false
 ---
 

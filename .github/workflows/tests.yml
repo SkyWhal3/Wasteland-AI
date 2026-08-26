@@ -25,3 +25,5 @@ jobs:
         run: python 05_SCRIPTS/tests/test_probe.py
       - name: Import + behavior smoke (jail, caps, allowlist, stale detection)
         run: python 05_SCRIPTS/tests/test_smoke.py
+      - name: Skill telegrams (byte budget, fence prefix, oracle binding)
+        run: python 05_SCRIPTS/tests/test_skills.py

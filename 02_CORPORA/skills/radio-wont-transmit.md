@@ -24,6 +24,8 @@ open_these:
   - 00_DOCS/SECURITY.md   (if it transmits but the Oracle ignores you)
 never_generate: [pin numbers, register values, frequencies, duty-cycle limits]
 fence: none   # but band and duty-cycle rules are retrieval-only
+radio: ultra            # mesh replies from this skill: one packet, always
+radio_payload: "RADIO SILENT: region set? (unset=mute, looks dead). Same channel+key+PRESET both ends? Data USB cable? Oracle ignores channel msgs - DM only. NEVER power board w/o antenna."
 human_verified: false
 ---
 

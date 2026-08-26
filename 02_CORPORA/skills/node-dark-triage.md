@@ -19,6 +19,8 @@ open_these:
   - 00_DOCS/SECURITY.md   (only if it answers but refuses logins)
 never_generate: [fuse ratings, wire gauges]
 fence: none
+radio: ultra            # mesh replies from this skill: one packet, always
+radio_payload: "NODE DARK: any light anywhere? NO=power: check band in power_log (BLACK=designed shutdown), volts AT battery terminals, fuses, wiggle joints. YES=computer: PSU quality, SD card, service status."
 human_verified: false
 ---
 
