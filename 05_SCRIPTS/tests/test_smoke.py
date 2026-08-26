@@ -85,6 +85,45 @@ with tempfile.TemporaryDirectory() as td:
         lora_oracle.SMS_CONTACTS.clear()
         lora_oracle.EMAIL_CONTACTS.clear()
 
+    # Packet modes: byte-exact, suffix inside the budget, fenced pins ultra
+    one = lora_oracle.packetize("short answer", "ultra")
+    assert len(one) == 1 and "[1/" not in one[0]
+    assert len(one[0].encode("utf-8")) <= lora_oracle.MAX_BYTES
+
+    long_text = ("the carburetor bowl gasket seals the float chamber against "
+                 "the bowl flange and hardens with ethanol fuel over seasons ") * 6
+    parts = lora_oracle.packetize(long_text, "compact")
+    assert 2 <= len(parts) <= lora_oracle.MAX_PARTS, len(parts)
+    for i, p in enumerate(parts):
+        assert len(p.encode("utf-8")) <= lora_oracle.MAX_BYTES, (i, p)
+        assert p.endswith(f"[{i + 1}/{len(parts)}]"), p
+
+    # multibyte discipline: '°' is two bytes and must never straddle a slice
+    for p in lora_oracle.packetize("°" * 500, "compact"):
+        assert len(p.encode("utf-8")) <= lora_oracle.MAX_BYTES
+        p.encode("utf-8").decode("utf-8")     # raises if a char was split
+
+    # compact on short text: one clean packet, no pointless [1/1]
+    single = lora_oracle.packetize("short", "compact")
+    assert len(single) == 1 and "[1/1]" not in single[0]
+    # ultra ignores length: always exactly one clipped packet
+    assert len(lora_oracle.packetize(long_text, "ultra")) == 1
+
+    # provenance: a FENCED ?ask pins ultra even when compact was requested
+    lora_oracle._REPLY["mode"] = None
+    r = lora_oracle.handle("?ask compact is this mushroom edible?")
+    assert r.startswith("FENCED (plant_edibility)"), r
+    assert lora_oracle._REPLY["mode"] == "ultra"
+    # ?med pins ultra before it does anything else
+    lora_oracle._REPLY["mode"] = None
+    lora_oracle.handle("?med tourniquet")
+    assert lora_oracle._REPLY["mode"] == "ultra"
+    # a no-brain ?ask never grants compact
+    lora_oracle._REPLY["mode"] = None
+    r = lora_oracle.handle("?ask compact what species is this purple flower?")
+    assert r.startswith("ASK: no uplink"), r
+    assert lora_oracle._REPLY["mode"] != "compact"
+
     # pi_agent jail (pointed at the temp dir): escape refused, inside allowed
     pi_agent.AGENT_ROOT = tmp / "sandbox"
     pi_agent.AGENT_ROOT.mkdir()

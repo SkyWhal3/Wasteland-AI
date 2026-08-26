@@ -149,6 +149,24 @@ SMTP_PORT = 587
 AUTHORIZED_SENDERS: set[int] | str | None = None
 
 MAX_LOG_BYTES = 1_000_000          # oracle.log rotates past this (SD cards die)
+
+# --- Radio packet modes (idea harvested from review of peer projects; ------
+# --- implementation is original, MIT-clean) --------------------------------
+#   ultra   one packet, the clip() cap — THE MESH DEFAULT, always
+#   compact 2..MAX_PARTS packets suffixed " [i/n]" with a gap between them —
+#           only when the sender asks (?ask compact <q>) or the node config
+#           says so, and ONLY for unfenced model prose
+#   full    uncapped — WiFi/demo/log surfaces only; the radio path degrades
+#           full to ultra because the mesh never gets an uncapped send
+# Fenced domains NEVER leave ultra: one packet + a pointer IS the answer.
+# A 131-node metro mesh punishes multi-part spam; airtime is a commons.
+RADIO_MODE = os.environ.get("RADIO_MODE", "ultra").lower()
+PART_USABLE = 194                  # payload bytes per part, before " [i/n]"
+PART_GAP_S = 2.0                   # pause between parts; raise on a busy mesh
+MAX_PARTS = 4
+
+AUDIT_LOG = Path("oracle_audit.jsonl")   # one line per served query — the
+                                         # radio path's flight recorder
 # ---------------------------------------------------------------------------
 
 _last_seen: dict[int, float] = {}   # sender node number -> last-served time
@@ -167,6 +185,73 @@ def clip(s: str) -> str:
     while len(s.encode("utf-8")) > MAX_BYTES:
         s = s[:-2] + "…"
     return s
+
+
+# The reply mode travels WITH the reply, set by the command that built it —
+# provenance, not guesswork. Worker resets it before each job; the single-
+# threaded worker makes this safe. None = node default (RADIO_MODE).
+# Fenced/retrieval paths pin "ultra"; only unfenced model prose may go
+# "compact", and only when asked.
+_REPLY = {"mode": None}
+
+
+def clip_bytes(s: str, max_bytes: int) -> str:
+    """Trim to a UTF-8 byte budget without splitting a multibyte char.
+    ('°' is two bytes; a packet boundary through the middle of it would
+    render as mojibake on every phone in camp.)"""
+    s = " ".join(s.split())
+    while s and len(s.encode("utf-8")) > max_bytes:
+        s = s[:-1]
+    return s
+
+
+def packetize(text: str, mode: str | None = None) -> list[str]:
+    """Turn one reply into 1..MAX_PARTS radio-safe strings. Never empty.
+    ultra -> [clip(text)]. compact -> byte-budgeted slices, ' [i/n]'
+    suffixes counted INSIDE the budget, single-part compact drops the
+    pointless '[1/1]'. full -> untouched (caller must never TX it)."""
+    mode = (mode or RADIO_MODE or "ultra").lower()
+    if mode == "full":
+        return [text]
+    if mode != "compact":
+        return [clip(text)]
+    raw = " ".join(text.split())
+    parts: list[str] = []
+    buf = raw
+    while buf and len(parts) < MAX_PARTS:
+        chunk = clip_bytes(buf, PART_USABLE)
+        if not chunk:
+            break
+        parts.append(chunk)
+        buf = buf[len(chunk):].lstrip()
+    if not parts:
+        return [clip(raw)]
+    if buf:                       # ran out of parts before out of text
+        parts[-1] = clip_bytes(parts[-1], PART_USABLE - 3) + "…"
+    if len(parts) == 1:
+        return [clip(parts[0])]
+    n = len(parts)
+    return [f"{p} [{i + 1}/{n}]" for i, p in enumerate(parts)]
+
+
+def audit(sender, text: str, parts: list[str], mode: str) -> None:
+    """One JSONL line per served query — command, mode, parts, chars, never
+    the reply body (the log has that) and never a failure that kills the
+    oracle. The radio path's flight recorder."""
+    try:
+        if AUDIT_LOG.exists() and AUDIT_LOG.stat().st_size > MAX_LOG_BYTES:
+            AUDIT_LOG.replace(AUDIT_LOG.with_suffix(".jsonl.old"))
+        with open(AUDIT_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "sender": sender,
+                "cmd": text.split(None, 1)[0].lower() if text else "",
+                "mode": mode,
+                "parts": len(parts),
+                "chars": sum(len(p) for p in parts),
+            }) + "\n")
+    except (OSError, ValueError):
+        pass
 
 
 def log(line: str) -> None:
@@ -287,7 +372,8 @@ def cmd_med(query: str) -> str:
     """RETRIEVAL ONLY. Finds the best-matching WikEM article via kiwix-serve's
     /suggest endpoint and returns title + opening text + where to read it.
     No language model is involved in this path, by design (manifest §9)."""
-    if not query:
+    _REPLY["mode"] = "ultra"      # medical NEVER multi-parts: one packet,
+    if not query:                 # a title, and where to read the source
         return "Usage: ?med <topic>   e.g. ?med tourniquet"
     book = _kiwix_book()
     try:
@@ -615,22 +701,39 @@ def cmd_ask(question: str) -> str:
     (labeled 'NET:'), local Ollama otherwise (labeled 'AI:'). Model text is
     an index into the library, never a source, whoever generated it."""
     if not question:
-        return "Usage: ?ask <question>"
+        return "Usage: ?ask <question>   (?ask compact <q> allows a multi-part reply)"
+
+    # "?ask compact <q>" — the sender is asking to spend airtime. Honored
+    # only if the reply turns out to be unfenced model prose.
+    want_compact = False
+    first, _, rest = question.partition(" ")
+    if first.lower() == "compact" and rest.strip():
+        want_compact, question = True, rest.strip()
 
     decision = safety_router.route(question)
     if decision.route == "RETRIEVAL_ONLY":
         # No model answers fenced questions — not the local one, not the
-        # frontier one. Same rule that keeps ?med retrieval-only.
+        # frontier one. Same rule that keeps ?med retrieval-only. And a
+        # fenced reply never multi-parts: the pointer IS the answer.
+        _REPLY["mode"] = "ultra"
         hint = "?med <topic>" if decision.domain == "medical" else "the library at node WiFi"
         return f"FENCED ({decision.domain}): no AI answer here by design. Source docs only - {hint}."
     if decision.route == "ARTIFACT_LOOKUP":
+        _REPLY["mode"] = "ultra"
         return "Spec/part question - try ?find <part>, or the datasheet shelf at node WiFi."
+
+    # Honesty label (review harvest): when no skill/manual backs the answer,
+    # say so in the label — a fluent paragraph with no source is an index
+    # entry, not a reference.
+    tag = "" if decision.skill else "(no doc)"
 
     if NET_BACKEND == "anthropic" and os.environ.get(NET_KEY_ENV) and net_up():
         try:
             text = _ask_net(question)
             if text:
-                return "NET: " + text
+                if want_compact:
+                    _REPLY["mode"] = "compact"
+                return f"NET{tag}: " + text
         except requests.RequestException:
             _NET_STATE.update(ok=False, at=time.monotonic())
             log("NET call failed mid-flight; falling back to local model")
@@ -646,7 +749,9 @@ def cmd_ask(question: str) -> str:
                                 "stream": False},
                           timeout=120)
         r.raise_for_status()
-        return "AI: " + r.json().get("response", "").strip()
+        if want_compact:
+            _REPLY["mode"] = "compact"
+        return f"AI{tag}: " + r.json().get("response", "").strip()
     except requests.RequestException:
         return "AI backend unreachable."
 
@@ -719,8 +824,11 @@ def demo_repl():
             continue
         if not text.startswith("?"):
             text = "?" + text            # be forgiving at the keyboard
-        reply = clip(handle(text))
-        print(f"[{len(reply)} chars] {reply}")
+        _REPLY["mode"] = None
+        parts = packetize(handle(text), _REPLY["mode"])
+        for i, p in enumerate(parts):
+            n = f" part {i + 1}/{len(parts)}" if len(parts) > 1 else ""
+            print(f"[{len(p)} chars{n}] {p}")
 
 
 def main():
@@ -769,12 +877,24 @@ def main():
                 sender, text = _JOBS.get(timeout=1)
             except queue.Empty:
                 continue
-            reply = clip(handle(text))
-            log(f"FROM {sender!r}: {text!r} -> {reply!r}")
+            _REPLY["mode"] = None            # each job re-decides its mode
+            reply = handle(text)
+            mode = (_REPLY["mode"] or RADIO_MODE or "ultra").lower()
+            if mode == "full":
+                mode = "ultra"               # the RADIO never sends uncapped
+            parts = packetize(reply, mode)
+            log(f"FROM {sender!r}: {text!r} -> {len(parts)} part(s) "
+                f"[{mode}] {parts[0]!r}")
             try:
-                iface.sendText(reply, destinationId=sender)
+                for i, part in enumerate(parts):
+                    iface.sendText(part, destinationId=sender)
+                    if i + 1 < len(parts):
+                        time.sleep(PART_GAP_S)   # worker thread, not radio
             except Exception as e:       # radio hiccup: log it, stay alive
                 log(f"ERROR sending reply: {e}")
+            audit(sender, text, parts, mode)
+            # Rate limit stays per QUERY: a 3-part reply is one query's
+            # airtime spend, already bounded by MAX_PARTS.
     except KeyboardInterrupt:
         print("\nShutting down.")
         iface.close()

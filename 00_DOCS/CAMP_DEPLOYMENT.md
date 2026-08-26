@@ -110,10 +110,25 @@ board never sees a brownout.
 - Primary: **LongFast, default key** — the public mesh, unchanged.
 - Secondary: **the group channel, custom random PSK**, created at home,
   shared by QR **in person, before the trip**. Position precision LOW.
-- Roles: everything CLIENT in town. In true backcountry (no other mesh for
-  miles), the tree relays MAY run ROUTER for the weekend — set it at camp,
-  **revert to CLIENT before coming home**, because a ground-level ROUTER in
-  the city degrades the 131-node neighborhood mesh.
+- Roles (corrected 2026-08-25 per external review — firmware 2.6/2.7
+  guidance is stricter than our first draft): **we join the Front Range
+  mesh as guests.** One elevated node runs **CLIENT_BASE** with the
+  pocket nodes and LIBR *favorited* on it — that is the role built for
+  "strong tree node serving our weak handhelds" without jumping the
+  public rebroadcast queue. Everything else runs **CLIENT** (or
+  **CLIENT_MUTE** for a second radio sitting beside another in the same
+  camp circle — two hoisted radios 30 m apart fight each other).
+  **ROUTER/REPEATER stay off, period** — those are for mountaintop
+  infrastructure, and a ground-level ROUTER degrades the mesh in town
+  AND at camp. The narrow exception is ROUTER_LATE for a *measured* RF
+  shadow (a traceroute proved a hidden cluster), cleared before driving
+  home. Hop limit stays 3; raising it on a dense mesh reduces delivery,
+  and if a walk test dies at hop 3, raise it on the edge handheld only,
+  never on LIBR. **The librarian is a destination, not infrastructure**:
+  LIBR stays CLIENT, precision 0, and answers DMs instead of winning
+  rebroadcast lotteries. Hoist the nRF board, never the WiFi-hungry
+  ESP32. TAK users: see 00_DOCS/TAK.md — own channel, slow interval,
+  nowhere near LongFast.
 - **MQTT stays OFF on every node at camp. No exceptions in the field.**
   Misconfigured MQTT republishes mesh traffic — including private-channel
   positions — to public internet brokers. It is the single most common way
