@@ -56,10 +56,15 @@ with tempfile.TemporaryDirectory() as td:
     fake2 = '<div class="thumbcaption">Anatomy diagram</div><p>Body text.</p>'
     sec2, txt2 = lora_oracle._article_text(fake2)
     assert sec2 == "" and "Anatomy" not in txt2 and "Body text." in txt2, txt2
-    fake3 = ('<h1>T</h1><h2>General Management</h2><p>Warm the core.</p>'
+    fake3 = ('<h1>T</h1><h2>General Management</h2>'
+             '<p>Warm the core with blankets and warm sweet drinks.</p>'
              '<h2>See Also</h2><p>x</p>')
     sec3, txt3 = lora_oracle._article_text(fake3)
-    assert sec3 == "§MANAGEMENT" and txt3.strip() == "Warm the core.", (sec3, txt3)
+    assert sec3 == "§MANAGEMENT" and txt3.startswith("Warm the core"), (sec3, txt3)
+    assert "See Also" not in txt3
+    # and a heading whose body is a stub falls through to the fallback
+    fake4 = '<h2>Management</h2><p>tiny</p>'
+    assert lora_oracle._article_text(fake4)[0] == ""
 
     # ?med paging: walked pages, nothing lost in the cracks, clamped pages
     long_text = ("Alpha beta gamma. " * 30).strip()
