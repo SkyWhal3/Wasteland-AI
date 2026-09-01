@@ -166,7 +166,7 @@ SMTP_PORT = 587
 # The allowlist itself comes from the ORACLE_ALLOWLIST environment variable —
 # same rule as every credential here: real node numbers never live in this
 # file, which is why this file can stay in a public repo. Formats accepted:
-#   ORACLE_ALLOWLIST="!ba0618fd"          one node, Meshtastic !hex id
+#   ORACLE_ALLOWLIST="!deadbeef"          one node, Meshtastic !hex id
 #   ORACLE_ALLOWLIST="0x1234abcd,54321"   several, hex or decimal
 #   ORACLE_ALLOWLIST="*"                  open bench mode (warns at startup)
 #   unset                                 None -> open with warning, and the

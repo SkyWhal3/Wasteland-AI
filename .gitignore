@@ -53,6 +53,7 @@ power_log.csv
 power_log_demo.csv
 latest.json
 oracle.log
+oracle_audit*.jsonl
 checksums.csv
 demo.csv
 agent_transcript*.jsonl

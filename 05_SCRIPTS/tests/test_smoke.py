@@ -113,7 +113,7 @@ with tempfile.TemporaryDirectory() as td:
     assert lora_oracle._parse_allowlist(None) is None
     assert lora_oracle._parse_allowlist("  ") is None
     assert lora_oracle._parse_allowlist("*") == "*"
-    assert lora_oracle._parse_allowlist("!ba0618fd,0xAB, 77") == {0xBA0618FD, 0xAB, 77}
+    assert lora_oracle._parse_allowlist("!c0ffee55,0xAB, 77") == {0xC0FFEE55, 0xAB, 77}
 
     # router: caliber+intent fences; caliber alone stays free
     d = safety_router.route("what's a safe 9mm load?")

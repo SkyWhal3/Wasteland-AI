@@ -31,7 +31,7 @@ worth of bugs found by real use and fixed with regression tests.
   mesh-ready (0 FAIL / 1 WARN — the WARN is the not-yet-created private
   camp channel, deliberate). Config backed up. Runs 24/7 on a wall brick,
   relaying as a normal mesh citizen for the ~28-node neighborhood it hears.
-- **T-Deck confirmed in hand** ("ByteKhaos"). Two-node encrypted DM test
+- **T-Deck confirmed in hand** (Adam's own). Two-node encrypted DM test
   passed both directions at SNR +7 dB. The Oracle flies under Adam's own
   callsign — the borrowed-node restriction is retired.
 - The probe learned the nRF52 family (Adafruit TinyUSB VID 0x239A).
