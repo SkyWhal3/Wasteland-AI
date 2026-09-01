@@ -5,11 +5,15 @@ frontmatter — the "if only one packet gets through" version of its procedure.
 The oracle serves it whenever the router matches the skill, so these strings
 ARE radio traffic: the byte budget is a hard contract, not a style rule.
 
-Budget arithmetic: a payload may be served behind the longest fence tag,
-"FENCED (electrical_sizing). " (28 chars). 200-byte payloads + 28 <= 228,
-inside the radio's 230-byte ceiling with no clipping. A payload that needs
-clipping would truncate mid-procedure — that is a test failure, not a
-runtime nicety.
+Budget arithmetic — learned from the FIRST FLIGHT, 2026-09-01: clip()
+enforces 200 CHARS as well as 230 bytes, and for ASCII the char cap binds
+first. The water telegram behind "FENCED (water_dosing). " ran 208 chars
+and the radio delivered "...EPA/CDC card, ?m" — the clip ate the pointer,
+which is the most valuable part. So the contract is now the real one: a
+payload may run at most 172 bytes (200 minus the 28-char worst-case tag
+"FENCED (electrical_sizing). "), and the FENCED form itself must survive
+packetize() byte-identical. A payload that needs clipping truncates
+mid-procedure — that is a test failure, not a runtime nicety.
 
 Run from anywhere:  python 05_SCRIPTS/tests/test_skills.py
 No network, no radio, no mocks — the router and oracle run for real.
@@ -58,13 +62,16 @@ for path in skill_files:
 
     # the budget, including the worst-case fence prefix
     raw = payload.encode("utf-8")
-    assert len(raw) <= 200, f"{name}: payload {len(raw)} bytes > 200"
-    fenced = (LONGEST_FENCE_TAG + payload).encode("utf-8")
-    assert len(fenced) <= lora_oracle.MAX_BYTES, f"{name}: fenced form {len(fenced)} bytes"
+    assert len(raw) <= 172, f"{name}: payload {len(raw)} bytes > 172"
+    fenced = LONGEST_FENCE_TAG + payload
+    assert len(fenced) <= lora_oracle.MAX_CHARS, f"{name}: fenced form {len(fenced)} chars"
+    assert len(fenced.encode("utf-8")) <= lora_oracle.MAX_BYTES, f"{name}: fenced bytes"
 
-    # ultra really means one packet, unclipped: packetize must return the
-    # payload byte-identical (clipping would truncate mid-procedure)
+    # ultra really means one packet, unclipped — for the bare payload AND
+    # for the fenced form (the first flight proved clip() eats the pointer
+    # off the end otherwise, and the pointer is the answer)
     assert lora_oracle.packetize(payload, "ultra") == [payload], f"{name}: payload got clipped"
+    assert lora_oracle.packetize(fenced, "ultra") == [fenced], f"{name}: fenced form got clipped"
 
     # the oracle's own loader reads the same value this test parsed
     assert lora_oracle._skill_payload(name) == payload, f"{name}: loader/test disagree"

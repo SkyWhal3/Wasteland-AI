@@ -26,7 +26,7 @@ never_generate:
     references, never prose
 fence: none   # but safety systems follow the retrieval-only rule
 radio: ultra            # mesh replies from this skill: one packet, always
-radio_payload: "VEHICLE: does it crank? NO=electrical: volts WHILE cranking (rest lies), terminals+ground strap, try Neutral. YES=fuel/spark/air: pump prime sound? pull a plug - wet=no spark. FSM for numbers."
+radio_payload: "VEHICLE: does it crank? NO=electrical: volts WHILE cranking (rest lies), terminals+ground strap, try Neutral. YES: fuel pump prime? plug wet=no spark. FSM for numbers."
 human_verified: false
 ---
 

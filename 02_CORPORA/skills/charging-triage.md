@@ -24,7 +24,7 @@ never_generate:
   - fuse ratings
 fence: retrieval_only   # charge parameters are a fenced domain
 radio: ultra            # mesh replies from this skill: one packet, always
-radio_payload: "CHARGE: read controller code first (power_monitor decodes). Below 0C lithium BMS REFUSES charge - by design, not broken. Then: snow/shade, battery fuse, wiggle connections under load."
+radio_payload: "CHARGE: read controller code first (power_monitor decodes). Below 0C lithium BMS REFUSES charge - by design. Then: snow/shade, battery fuse, wiggle connections."
 human_verified: false
 ---
 

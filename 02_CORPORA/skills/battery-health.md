@@ -32,7 +32,7 @@ never_generate:
   - any claim that a chemical additive or "desulfator" device will work
 fence: retrieval_only   # charge parameters are a fenced domain
 radio: ultra            # mesh replies from this skill: one packet, always
-radio_payload: "BATT: chemistry FIRST - flooded/AGM/lithium fail differently. Equalize=flooded ONLY (damages AGM, can ignite Li). One low cell=dead cell. Volts+duration from maker manual only. ?find battery"
+radio_payload: "BATT: chemistry FIRST - flooded/AGM/lithium fail differently. Equalize=flooded ONLY (kills AGM/Li). One low cell=dead cell. Numbers from maker manual. ?find battery"
 human_verified: false
 ---
 

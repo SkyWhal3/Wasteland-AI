@@ -29,7 +29,7 @@ never_generate:
   - any statement that a given source is safe to drink
 fence: retrieval_only   # this entire skill sits inside a fenced domain
 radio: ultra            # mesh replies from this skill: one packet, always
-radio_payload: "WATER: boiling/bleach kill germs ONLY - mine/chemical/fuel contamination = DO NOT DRINK, change source. Cloudy? Settle/filter BEFORE disinfecting. Doses+times: EPA/CDC card, ?med water."
+radio_payload: "WATER: boil/bleach kill germs ONLY - mine/chemical/fuel contamination = DO NOT DRINK, change source. Cloudy? Settle/filter FIRST. Times+doses: EPA card + ?med water"
 human_verified: false
 ---
 

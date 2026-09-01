@@ -29,7 +29,7 @@ never_generate:
   - reassurance of any kind
 fence: retrieval_only   # medical. The strictest reading of the rule applies.
 radio: ultra            # mesh replies from this skill: one packet, always
-radio_payload: "WOUND: bleeding uncontrolled? Direct pressure NOW, nothing else matters. Controlled: ?med wound for the article - verbatim only. Bite/puncture/spurting/numbness/bone visible = get a real medic."
+radio_payload: "WOUND: bleeding uncontrolled? Direct pressure NOW, nothing else matters. Controlled: ?med wound - verbatim only. Bite/puncture/spurting/numb/bone = get a real medic."
 human_verified: false
 ---
 

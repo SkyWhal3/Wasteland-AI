@@ -39,7 +39,7 @@ open_these:
 never_generate: [the specific things a model must not invent here]
 fence: none | retrieval_only   # does §9 apply to any part of this?
 radio: ultra                   # mesh replies from a skill: one packet, always
-radio_payload: "THE TELEGRAM: the whole procedure's spine in one packet, <=200 bytes"
+radio_payload: "THE TELEGRAM: the whole procedure's spine in one packet, <=172 bytes"
 human_verified: false
 ---
 
@@ -69,8 +69,12 @@ that a small model can hold it in context alongside the actual question.
 ## The radio telegram (`radio_payload`)
 
 Each skill carries the one-packet version of itself: the ordered spine of
-the procedure, compressed to a single ASCII line of **at most 200 bytes**
-(so it still fits one LoRa packet behind the longest `FENCED (...)` tag).
+the procedure, compressed to a single ASCII line of **at most 172 bytes**
+— that is the 200-character packet cap minus the longest `FENCED (...)`
+tag, so the telegram survives *unclipped* even on a fenced route. (The
+first flight proved why: an over-budget water telegram reached the T-Deck
+as "...EPA/CDC card, ?m" — the clip ate the pointer, and the pointer is
+the answer.)
 When the router matches a skill, `lora_oracle` serves this telegram
 *instead of* model prose — the skill is the answer, the model only fields
 questions no procedure covers. The same rules apply at telegram scale:

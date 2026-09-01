@@ -29,7 +29,7 @@ never_generate:
   - any procedure for connecting a generator to building wiring
 fence: retrieval_only   # applies to the CO and backfeed sections ONLY
 radio: ultra            # mesh replies from this skill: one packet, always
-radio_payload: "GEN NO-START: level machine, check oil FIRST (low-oil cutout fakes fuel fault). Fuel valve+choke+cap vent. Gas >3mo old? Replace. Then spark test per manual. Gap/jet/torque = MANUAL only."
+radio_payload: "GEN NO-START: level machine, check oil FIRST (low-oil cutout fakes fuel fault). Fuel valve+choke+cap vent. Old gas? Replace. Spark test next. Gap/jet/torque: MANUAL only."
 human_verified: false
 ---
 
