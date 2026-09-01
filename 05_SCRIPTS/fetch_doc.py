@@ -39,7 +39,7 @@ import urllib.error
 import urllib.request
 
 # A User-Agent alone is not enough everywhere: stacks.cdc.gov returns 403
-# to any request that omits an Accept header (found 2026-08-25). These are
+# to any request that omits an Accept header (found 2026-09-01). These are
 # headers every ordinary HTTP client sends; the UA still says archival.
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) archival/1.0",
       "Accept": "application/pdf,application/octet-stream,*/*",
