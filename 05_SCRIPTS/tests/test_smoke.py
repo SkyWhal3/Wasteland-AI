@@ -19,7 +19,8 @@ from pathlib import Path
 # number. Tests prove gates; they must not depend on the machine's env.)
 for _var in ("TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET",
              "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER",
-             "ORACLE_SMTP_HOST", "ORACLE_SMTP_USER", "ORACLE_SMTP_PASS"):
+             "ORACLE_SMTP_HOST", "ORACLE_SMTP_USER", "ORACLE_SMTP_PASS",
+             "ORACLE_ALLOWLIST"):
     os.environ.pop(_var, None)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -41,6 +42,12 @@ with tempfile.TemporaryDirectory() as td:
     # clip(): the 200-char radio cap holds — in CHARACTERS and in BYTES
     assert len(lora_oracle.clip("x " * 300)) == 200
     assert len(lora_oracle.clip("°" * 300).encode("utf-8")) <= 230
+
+    # ORACLE_ALLOWLIST parsing: !hex, 0xhex, decimal, "*", unset
+    assert lora_oracle._parse_allowlist(None) is None
+    assert lora_oracle._parse_allowlist("  ") is None
+    assert lora_oracle._parse_allowlist("*") == "*"
+    assert lora_oracle._parse_allowlist("!ba0618fd,0xAB, 77") == {0xBA0618FD, 0xAB, 77}
 
     # router: caliber+intent fences; caliber alone stays free
     d = safety_router.route("what's a safe 9mm load?")

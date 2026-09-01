@@ -61,11 +61,12 @@ BACKUP_DIR = REPO_ROOT / "04_CONFIG" / "meshtastic"
 # The handoff checklist says firmware 2.5 or newer before a node joins the mesh.
 MIN_FIRMWARE = (2, 5)
 
-# USB bridge chips seen on ESP32 dev boards. Used only to *suggest* a port.
+# USB IDs seen on Meshtastic dev boards. Used only to *suggest* a port.
 KNOWN_USB_VIDS = {
     0x10C4: "Silicon Labs CP210x",
     0x1A86: "WCH CH340/CH9102",
     0x303A: "Espressif native USB",
+    0x239A: "Adafruit TinyUSB (nRF52840: T114, RAK4631, T-Echo)",
 }
 
 

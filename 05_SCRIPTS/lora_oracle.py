@@ -146,7 +146,39 @@ SMTP_PORT = 587
 # Node numbers come from this script's startup line or `meshtastic --nodes`.
 # Why it matters: ?power reveals whether anyone is home and how much reserve
 # you have; ?find reveals what you own.
-AUTHORIZED_SENDERS: set[int] | str | None = None
+#
+# The allowlist itself comes from the ORACLE_ALLOWLIST environment variable —
+# same rule as every credential here: real node numbers never live in this
+# file, which is why this file can stay in a public repo. Formats accepted:
+#   ORACLE_ALLOWLIST="!ba0618fd"          one node, Meshtastic !hex id
+#   ORACLE_ALLOWLIST="0x1234abcd,54321"   several, hex or decimal
+#   ORACLE_ALLOWLIST="*"                  open bench mode (warns at startup)
+#   unset                                 None -> open with warning, and the
+#                                         ?sms/?email doors stay REFUSED
+
+
+def _parse_allowlist(raw: str | None) -> set[int] | str | None:
+    """ORACLE_ALLOWLIST -> allowlist. Bad tokens fail loudly at startup,
+    not silently at 2 a.m. when a denied neighbor wonders why."""
+    if raw is None or not raw.strip():
+        return None
+    raw = raw.strip()
+    if raw == "*":
+        return "*"
+    out: set[int] = set()
+    for tok in raw.split(","):
+        tok = tok.strip()
+        if tok.startswith("!"):
+            out.add(int(tok[1:], 16))
+        elif tok.lower().startswith("0x"):
+            out.add(int(tok, 16))
+        else:
+            out.add(int(tok, 10))
+    return out
+
+
+AUTHORIZED_SENDERS: set[int] | str | None = _parse_allowlist(
+    os.environ.get("ORACLE_ALLOWLIST"))
 
 MAX_LOG_BYTES = 1_000_000          # oracle.log rotates past this (SD cards die)
 
