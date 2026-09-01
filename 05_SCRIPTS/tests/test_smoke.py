@@ -43,6 +43,18 @@ with tempfile.TemporaryDirectory() as td:
     assert len(lora_oracle.clip("x " * 300)) == 200
     assert len(lora_oracle.clip("°" * 300).encode("utf-8")) <= 230
 
+    # ?med window targeting: captions/chrome cut, Management section wins
+    fake = ('<h1>Burns</h1><div class="thumb tright"><div class="thumbinner">'
+            '<div class="thumbcaption">Cross-sectional anatomy of burns</div>'
+            '</div></div><p>Background prose here.</p>'
+            '<h2><span class="mw-headline" id="Management">Management</span></h2>'
+            '<p>Cool the burn. Remove rings.</p>')
+    sec, txt = lora_oracle._article_text(fake)
+    assert sec.endswith("MANAGEMENT") and txt.startswith("Cool the burn"), (sec, txt)
+    fake2 = '<div class="thumbcaption">Anatomy diagram</div><p>Body text.</p>'
+    sec2, txt2 = lora_oracle._article_text(fake2)
+    assert sec2 == "" and "Anatomy" not in txt2 and "Body text." in txt2, txt2
+
     # ORACLE_ALLOWLIST parsing: !hex, 0xhex, decimal, "*", unset
     assert lora_oracle._parse_allowlist(None) is None
     assert lora_oracle._parse_allowlist("  ") is None

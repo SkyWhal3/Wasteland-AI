@@ -197,6 +197,10 @@ SKILL_TRIGGERS = {
         "main jet", "jet kit", "high altitude kit", "carburetor", "carb bowl",
         "pilot jet", "spark plug", "gas cap vent", "backfeed",
         "carbon monoxide",
+        # fuel-storage questions (first-flight harvest: the skill's ethanol
+        # shelf-life doctrine covers them; the dumb matcher didn't)
+        "stale fuel", "old gas", "gas go bad", "gas goes bad", "fuel storage",
+        "fuel stabilizer", "gasoline stable", "gasoline last", "ethanol fuel",
     ],
     "radio-wont-transmit": [
         "meshtastic", "lora", "sx1262", "heltec", "t-deck", "tdeck",
@@ -352,6 +356,7 @@ SKILL_TEST = [
                                               "wound-triage",      "RETRIEVAL_ONLY"),
     ("my flooded batteries only hold half capacity",
                                               "battery-health",    "GENERAL_MODEL"),
+    ("how long is gasoline stable for?",       "generator-service", "GENERAL_MODEL"),
     ("what equalization voltage for a flooded battery?",
                                               "battery-health",    "RETRIEVAL_ONLY"),
     ("how do i repair a jacket zipper?",      None,                "RAG"),

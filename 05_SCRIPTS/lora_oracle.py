@@ -339,6 +339,27 @@ def _strip_html(markup: str) -> str:
     return " ".join(text.split())
 
 
+def _article_text(markup: str) -> tuple[str, str]:
+    """Choose the radio window's verbatim text. Page chrome that wastes the
+    200 chars gets cut first — figures, captions, infobox tables, thumb/TOC
+    divs (the first flight spent its whole window on burn-anatomy diagram
+    captions). Then, if the article has a Management/Treatment section, the
+    window anchors THERE: in the field nobody needs Background first.
+    Section selection is retrieval targeting, not paraphrase — every word
+    that goes out is still the source's, in the source's order (§9)."""
+    m = re.sub(r"<figure\b.*?</figure>|<figcaption\b.*?</figcaption>",
+               " ", markup, flags=re.S | re.I)
+    m = re.sub(r"<table\b.*?</table>", " ", m, flags=re.S | re.I)
+    m = re.sub(r'<div\b[^>]*class="[^"]*(?:thumb|toc|gallery|infobox|navbox)'
+               r'[^"]*"[^>]*>.*?</div>', " ", m, flags=re.S | re.I)
+    for sec in ("Management", "Treatment"):
+        hit = re.search(rf"<h[1-4][^>]*>(?:\s|<[^>]+>)*{sec}\b", m,
+                        flags=re.S | re.I)
+        if hit:
+            return f"§{sec.upper()}", _strip_html(m[hit.end():])
+    return "", _strip_html(m)
+
+
 _BOOK_CACHE: str | None = None
 
 
@@ -427,17 +448,28 @@ def cmd_med(query: str) -> str:
     # (we are NOT sending HTML over a 200-char radio message).
     title = hits[0].get("value") or re.sub(r"<[^>]+>", "",
                                            hits[0].get("label", query))
-    html = _kiwix_article_html(book, hits[0]["path"])
-    snippet = ""
-    if html:
-        snippet = _strip_html(html)
+    page = _kiwix_article_html(book, hits[0]["path"])
+    section, snippet = "", ""
+    if page:
+        section, snippet = _article_text(page)
         # drop the leading title repetition if present
-        if snippet.lower().startswith(title.lower()):
+        if not section and snippet.lower().startswith(title.lower()):
             snippet = snippet[len(title):].lstrip(" -:")
-    head = f"WIKEM: {title.upper()} | "
+    head = f"WIKEM: {title.upper()}{(' ' + section) if section else ''} | "
     tail = " | FULL TEXT AT NODE"
     room = MAX_CHARS - len(head) - len(tail)
-    return head + snippet[:max(room, 0)] + tail
+    body = snippet[:max(room, 0)]
+    if len(snippet) > len(body):
+        # we truncated — end cleanly. Sentence boundary when the window's
+        # back half has one; otherwise at least never mid-word: a verbatim
+        # medical window must not cut a number or unit in its final token
+        # (WikEM management sections are bullet-styled and period-free).
+        cut = body.rfind(". ")
+        if cut >= room // 2:
+            body = body[:cut + 1]
+        elif " " in body:
+            body = body[:body.rindex(" ")]
+    return head + body + tail
 
 
 def cmd_find(query: str) -> str:
