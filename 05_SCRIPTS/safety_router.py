@@ -31,8 +31,13 @@ says what to ASK before answering and which document to open. A skill never
 changes a route — fenced stays fenced; it just rides along.
 
 Extend the keyword lists as you find gaps — misrouting toward MORE caution is
-free; misrouting toward less is the failure mode. Substrings match anywhere
-("burn" catches "burns" but also "burning smell" — that trade is deliberate).
+free; misrouting toward less is the failure mode. Keywords match at WORD
+BOUNDARIES with common endings ("burn" catches burns/burned/burning — not
+"burner"); a trailing '*' marks an open stem ("anaphyla*"). This replaced
+the original match-anywhere substring rule on 2026-09-01, operator-approved
+after "two-burner camp stove" was fenced as medical twice in one night of
+field QA; compounds the old rule caught for free (sunburn, burnt) are now
+listed explicitly. Flagged for chat-mode review (session-3 report).
 """
 
 from __future__ import annotations
@@ -40,6 +45,31 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass
+
+# ---------------- keyword matching ------------------------------------------
+# One matcher for every list in this file. A plain keyword (or phrase)
+# matches at word boundaries plus common English endings; a keyword ending
+# in '*' is an open stem matching any continuation. Both directions of the
+# old substring rule's failure are handled: "burner" no longer trips
+# "burn" (false fence), and "anaphyla*" still catches anaphylaxis (the
+# stems that substring matching was silently load-bearing for).
+_KW_CACHE: dict[str, "re.Pattern[str]"] = {}
+
+
+def _kw_hit(q: str, keywords) -> bool:
+    for kw in keywords:
+        pat = _KW_CACHE.get(kw)
+        if pat is None:
+            if kw.endswith("*"):
+                body = re.escape(kw[:-1]) + r"\w*"
+            else:
+                body = re.escape(kw) + r"(?:'?s|es|ed|ing)?"
+            pat = _KW_CACHE[kw] = re.compile(r"(?<!\w)" + body + r"(?!\w)",
+                                             re.I)
+        if pat.search(q):
+            return True
+    return False
+
 
 # ---------------- the six retrieval-only domains (manifest §9) ---------------
 # A hit on ANY of these forces RETRIEVAL_ONLY. Keep the lists generous:
@@ -49,19 +79,20 @@ from dataclasses import dataclass
 RETRIEVAL_ONLY_DOMAINS = {
     "medical": [
         "dose", "dosage", "mg/kg", "medication", "antibiotic", "tourniquet",
-        "bleeding", "fracture", "burn", "cpr", "overdose", "poison",
-        "allergic", "anaphyla", "seizure", "wound", "suture", "infection",
-        "symptom", "diagnos", "pediatric", "epinephrine", "insulin",
-        "fever", "dehydrat", "hypothermia", "frostbite", "heatstroke",
+        "bleeding", "fracture", "burn", "burnt", "sunburn", "windburn",
+        "cpr", "overdose", "poison",
+        "allergic", "anaphyla*", "seizure", "wound", "suture", "infection",
+        "symptom", "diagnos*", "pediatric", "epinephrine", "insulin",
+        "fever", "dehydrat*", "hypothermia", "frostbite", "heatstroke",
         "heat exhaustion", "snakebite", "antivenom", "ibuprofen",
         "acetaminophen", "tylenol", "aspirin", "amoxicillin", "penicillin",
-        "childbirth", "pregnan", "concussion", "splint", "first aid",
+        "childbirth", "pregnan*", "concussion", "splint", "first aid",
         "unconscious", "choking", "hemorrhage",
         "stitches", "laceration", "puncture", "cut on my", "deep cut",
-        "scald", "abscess", "dislocat",
+        "scald", "abscess", "dislocat*",
     ],
     "reloading": [
-        "grains of", "powder charge", "load data", "reload", "handload",
+        "grains of", "powder charge", "load data", "reload*", "handload*",
         "varget", "h4350", "imr", "hodgdon", "unique", "bullseye", "primer",
         "brass", "case capacity", "seating depth", "headspace", "max load",
         "starting load", "gr.", "grain load", "titegroup", "reloder",
@@ -82,7 +113,7 @@ RETRIEVAL_ONLY_DOMAINS = {
         "wire run", "conductor size", "panel string", "parallel strings",
         "battery cable", "inverter cable", "charge current", "c-rate",
         "equalization voltage", "equalize at", "equalization charge",
-        "specific gravity", "desulfat",
+        "specific gravity", "desulfat*",
     ],
     "structural": [
         "load bearing", "span for", "joist", "beam size", "rafter",
@@ -94,7 +125,7 @@ RETRIEVAL_ONLY_DOMAINS = {
     "water_dosing": [
         "bleach per", "chlorine dose", "ppm chlorine", "purify water",
         "water treatment dose", "iodine tablets", "contact time",
-        "calcium hypochlorite", "water purif", "boil water", "pool shock",
+        "calcium hypochlorite", "water purif*", "boil water", "pool shock",
         "giardia", "cryptosporidium", "sodis",
         "safe to drink", "drinkable", "potable", "is this water",
     ],
@@ -192,7 +223,7 @@ SKILL_TRIGGERS = {
         "is this water", "filter water",
     ],
     "generator-service": [
-        "generator", "genset", "eu2000", "eu2200", "honda eu", "predator 3500",
+        "generator", "genset", "eu2000*", "eu2200*", "honda eu", "predator 3500",
         "champion dual fuel", "inverter generator", "pull start", "recoil start",
         "main jet", "jet kit", "high altitude kit", "carburetor", "carb bowl",
         "pilot jet", "spark plug", "gas cap vent", "backfeed",
@@ -241,7 +272,7 @@ def match_skill(question: str) -> str | None:
     """First skill whose triggers appear in the question, or None."""
     q = question.lower()
     for name, triggers in SKILL_TRIGGERS.items():
-        if any(t in q for t in triggers):
+        if _kw_hit(q, triggers):
             return name
     return None
 
@@ -278,7 +309,7 @@ def _classify(question: str) -> Decision:
 
     # 1) Safety fence first. Always first.
     for domain, keywords in RETRIEVAL_ONLY_DOMAINS.items():
-        if any(k in q for k in keywords):
+        if _kw_hit(q, keywords):
             return _fence(domain)
     # 1b) Pattern fences.
     if CALIBER_RE.search(q) and RELOAD_CONTEXT_RE.search(q):
@@ -287,7 +318,7 @@ def _classify(question: str) -> Decision:
         return _fence("electrical_sizing")
 
     # 2) Hardware identity questions -> files, not prose.
-    if any(t in q for t in ARTIFACT_TRIGGERS) or PART_NUMBER_RE.search(question):
+    if _kw_hit(q, ARTIFACT_TRIGGERS) or PART_NUMBER_RE.search(question):
         return Decision(
             "ARTIFACT_LOOKUP", None,
             "Search INVENTORY.csv and the datasheet tree. Answer with a "
@@ -296,7 +327,7 @@ def _classify(question: str) -> Decision:
             "MODEL INFERENCE.")
 
     # 3) Library questions -> RAG with citations.
-    if any(t in q for t in RAG_TRIGGERS):
+    if _kw_hit(q, RAG_TRIGGERS):
         return Decision(
             "RAG", None,
             "Retrieve from the prose corpus, answer from the retrieved "
@@ -336,6 +367,12 @@ SELF_TEST = [
     ("found morels on the hike, how do i cook them?",     "RETRIEVAL_ONLY"),
     # identification WITHOUT ingestion stays open — naming a flower is safe
     ("what species is this purple five-petal flower?",    "GENERAL_MODEL"),
+    # word-boundary matching (2026-09-01): appliance words stop tripping
+    # injury words, while real injuries and stems still fence
+    ("how long will a propane tank last on a 2 burner stove?", "GENERAL_MODEL"),
+    ("i burned my hand on the stove",                     "RETRIEVAL_ONLY"),
+    ("bad sunburn, blistering",                           "RETRIEVAL_ONLY"),
+    ("anaphylactic reaction to a bee sting",              "RETRIEVAL_ONLY"),
 ]
 
 
