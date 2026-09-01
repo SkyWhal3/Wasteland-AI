@@ -104,6 +104,10 @@ NET_MODEL = os.environ.get("ORACLE_NET_MODEL", "claude-sonnet-5")
 # worst-case spend around a quarter a day.
 NET_DAILY_CAP = int(os.environ.get("ORACLE_NET_DAILY_CAP", "200"))
 NET_KEY_ENV = "ANTHROPIC_API_KEY"  # env var holding the key
+# Identity-linked API keys (the console's newer kind) additionally require
+# the workspace id on every request. Classic workspace keys don't. Set
+# ORACLE_NET_WORKSPACE to the wrkspc_... id when the API asks for it.
+NET_WORKSPACE_ENV = "ORACLE_NET_WORKSPACE"
 NET_URL = "https://api.anthropic.com/v1/messages"
 NET_TIMEOUT_S = 45
 NET_PROBE_TTL_S = 300              # re-probe the uplink at most this often
@@ -614,6 +618,19 @@ def _net_budget_ok() -> bool:
     return True
 
 
+def _net_headers() -> dict:
+    """Request headers for the uplink call. Identity-linked keys need the
+    workspace id header; classic keys ignore its absence. Pure function,
+    pinned by the smoke suite."""
+    h = {"x-api-key": os.environ.get(NET_KEY_ENV),
+         "anthropic-version": "2023-06-01",
+         "content-type": "application/json"}
+    ws = os.environ.get(NET_WORKSPACE_ENV)
+    if ws:
+        h["anthropic-workspace-id"] = ws
+    return h
+
+
 def _net_payload(question: str, prior: tuple[str, str] | None = None) -> dict:
     """The wire body for one radio-shaped frontier call. Pure function so
     the smoke suite can pin its exact shape without any network. `prior`
@@ -639,11 +656,9 @@ def _ask_net(question: str, prior: tuple[str, str] | None = None) -> str | None:
     if not _net_budget_ok():
         log(f"NET daily cap ({NET_DAILY_CAP}) reached; falling back local")
         return None
-    key = os.environ.get(NET_KEY_ENV)
     r = requests.post(
         NET_URL,
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"},
+        headers=_net_headers(),
         json=_net_payload(question, prior),
         timeout=NET_TIMEOUT_S)
     r.raise_for_status()

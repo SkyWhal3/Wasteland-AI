@@ -21,7 +21,8 @@ for _var in ("TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET"
              "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER",
              "ORACLE_SMTP_HOST", "ORACLE_SMTP_USER", "ORACLE_SMTP_PASS",
              "ORACLE_ALLOWLIST", "ORACLE_OLLAMA_MODEL",
-             "ORACLE_NET_BACKEND", "ORACLE_NET_MODEL", "ORACLE_NET_DAILY_CAP"):
+             "ORACLE_NET_BACKEND", "ORACLE_NET_MODEL", "ORACLE_NET_DAILY_CAP",
+             "ORACLE_NET_WORKSPACE"):
     os.environ.pop(_var, None)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -52,6 +53,13 @@ with tempfile.TemporaryDirectory() as td:
     p2 = lora_oracle._net_payload("next", prior=("q1", "a1"))
     assert [m["role"] for m in p2["messages"]] == ["user", "assistant", "user"]
     assert p2["messages"][1]["content"] == "a1"
+
+    # workspace header appears exactly when the env var is set
+    h = lora_oracle._net_headers()
+    assert "anthropic-workspace-id" not in h and h["anthropic-version"]
+    os.environ["ORACLE_NET_WORKSPACE"] = "wrkspc_test"
+    assert lora_oracle._net_headers()["anthropic-workspace-id"] == "wrkspc_test"
+    os.environ.pop("ORACLE_NET_WORKSPACE")
 
     # ?more with no history answers honestly, no network involved
     assert lora_oracle.cmd_more("").startswith("Nothing to continue")
