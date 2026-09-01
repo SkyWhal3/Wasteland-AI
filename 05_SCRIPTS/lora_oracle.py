@@ -1166,8 +1166,21 @@ def main():
     pub.subscribe(on_receive, "meshtastic.receive")
     print(f"Oracle up as node {MY_NUM}. DM-only, {MAX_CHARS}-char cap, "
           f"{RATE_LIMIT_S}s rate limit. Ctrl-C to stop.")
-    if OLLAMA_MODEL is None:
-        print("?ask is DISABLED (OLLAMA_MODEL=None). ?med/?find/?power active.")
+    # Report the ACTUAL brain roster — this banner once only knew about the
+    # local model and printed "?ask is DISABLED" while the NET gateway was
+    # live, which cost a tired operator his YAY at 5 a.m.
+    net_on = NET_BACKEND == "anthropic" and bool(os.environ.get(NET_KEY_ENV))
+    if net_on and OLLAMA_MODEL:
+        print(f"?ask brains: NET {NET_MODEL} (cap {NET_DAILY_CAP}/day) "
+              f"-> local {OLLAMA_MODEL} fallback.")
+    elif net_on:
+        print(f"?ask brain: NET {NET_MODEL} (cap {NET_DAILY_CAP}/day), "
+              f"no local fallback when the uplink is down.")
+    elif OLLAMA_MODEL:
+        print(f"?ask brain: local {OLLAMA_MODEL} only (no NET uplink).")
+    else:
+        print("?ask has NO brains (skills/fence/refusals still serve). "
+              "?med/?find/?power active.")
     if AUTHORIZED_SENDERS is None:
         print("WARNING: OPEN MODE — AUTHORIZED_SENDERS is not set, so ANY node\n"
               "on the mesh can query this oracle (?power reveals battery state,\n"
