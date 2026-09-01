@@ -20,7 +20,8 @@ from pathlib import Path
 for _var in ("TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET",
              "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER",
              "ORACLE_SMTP_HOST", "ORACLE_SMTP_USER", "ORACLE_SMTP_PASS",
-             "ORACLE_ALLOWLIST", "ORACLE_OLLAMA_MODEL"):
+             "ORACLE_ALLOWLIST", "ORACLE_OLLAMA_MODEL",
+             "ORACLE_NET_BACKEND", "ORACLE_NET_MODEL", "ORACLE_NET_DAILY_CAP"):
     os.environ.pop(_var, None)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -42,6 +43,24 @@ with tempfile.TemporaryDirectory() as td:
     # clip(): the 200-char radio cap holds — in CHARACTERS and in BYTES
     assert len(lora_oracle.clip("x " * 300)) == 200
     assert len(lora_oracle.clip("°" * 300).encode("utf-8")) <= 230
+
+    # NET payload: radio system prompt, effort low, ?more threads prior turns
+    p = lora_oracle._net_payload("q1")
+    assert p["system"] == lora_oracle.NET_SYSTEM
+    assert p["output_config"] == {"effort": "low"}
+    assert p["messages"] == [{"role": "user", "content": "q1"}]
+    p2 = lora_oracle._net_payload("next", prior=("q1", "a1"))
+    assert [m["role"] for m in p2["messages"]] == ["user", "assistant", "user"]
+    assert p2["messages"][1]["content"] == "a1"
+
+    # ?more with no history answers honestly, no network involved
+    assert lora_oracle.cmd_more("").startswith("Nothing to continue")
+
+    # NET daily wallet guard: counts attempts, rolls over at UTC midnight
+    lora_oracle._NET_SPEND.update(day="1999-01-01", calls=999_999)
+    assert lora_oracle._net_budget_ok(), "a new day must reset the counter"
+    lora_oracle._NET_SPEND["calls"] = lora_oracle.NET_DAILY_CAP
+    assert not lora_oracle._net_budget_ok(), "cap must refuse the next call"
 
     # ?med window targeting: captions/chrome cut, Management section wins
     fake = ('<h1>Burns</h1><div class="thumb tright"><div class="thumbinner">'

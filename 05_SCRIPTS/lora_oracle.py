@@ -94,8 +94,15 @@ OLLAMA_MODEL = os.environ.get("ORACLE_OLLAMA_MODEL") or None
 # Ships disabled (None), same rule as OLLAMA_MODEL. The API key comes from
 # the environment variable named below — never from this file, which is why
 # this file can live in a public repo.
-NET_BACKEND = None                 # None = local-only node; "anthropic" = on
-NET_MODEL = "claude-opus-5"        # current Anthropic model id (2026-08)
+NET_BACKEND = os.environ.get("ORACLE_NET_BACKEND") or None   # "anthropic"=on
+# Sonnet 5 is the operator-chosen cost point for one-sentence radio answers
+# ($2/$10 per MTok, 2026-09): a query runs ~a tenth of a cent. Bigger brains
+# are an env var away (ORACLE_NET_MODEL=claude-opus-5) — never a code edit.
+NET_MODEL = os.environ.get("ORACLE_NET_MODEL", "claude-sonnet-5")
+# Wallet guard: frontier calls per UTC day. In-memory (restart resets),
+# which errs cheap-and-available; at Sonnet pricing the default cap bounds
+# worst-case spend around a quarter a day.
+NET_DAILY_CAP = int(os.environ.get("ORACLE_NET_DAILY_CAP", "200"))
 NET_KEY_ENV = "ANTHROPIC_API_KEY"  # env var holding the key
 NET_URL = "https://api.anthropic.com/v1/messages"
 NET_TIMEOUT_S = 45
@@ -306,7 +313,7 @@ def log(line: str) -> None:
 # ----------------------------- commands -------------------------------------
 
 def cmd_help(_arg: str) -> str:
-    return ("CMDS: ?power ?med ?find ?ask ?net ?sms <name> <msg> ?email. "
+    return ("CMDS: ?power ?med <t> [pN] ?find ?ask ?more ?net ?sms ?email. "
             "?med=retrieval-only. NET:=frontier AI:=local. Library at node WiFi.")
 
 
@@ -572,23 +579,72 @@ def net_up(force: bool = False) -> bool:
     return ok
 
 
-def _ask_net(question: str) -> str | None:
+# The radio pre-prompt — the whole field-comms doctrine, stated once, sent
+# with every call. Kept STABLE on purpose (byte-identical prompts are how
+# caching and behavior stay predictable); per-query context goes in the
+# user message, never in here.
+NET_SYSTEM = (
+    "You are the reply engine of an off-grid field library, reached over "
+    "Meshtastic LoRa radio at 200 characters per packet. Your ENTIRE reply "
+    "must fit one packet: max 160 characters, ASCII only, no markdown, no "
+    "preamble, no hedging. Lead with the single most useful fact or action, "
+    "in plain imperative field language. If a number matters and you are "
+    "not certain of it, reply 'unsure - check the library' rather than "
+    "guess. If asked for a medication dose, ammunition load, canning time, "
+    "wire or fuse size, structural span, water-treatment dose, or a "
+    "wild-plant or mushroom edibility call, reply exactly FENCED - a code "
+    "fence upstream handles those from source documents. The reader is "
+    "off-grid: assume camp tools only, no internet, no stores.")
+
+_LAST_ASK = {"q": None, "a": None}   # ?more continuation memory (one slot —
+                                     # this node answers one allowlisted human)
+_NET_SPEND = {"day": "", "calls": 0}
+
+
+def _net_budget_ok() -> bool:
+    """Spend the daily frontier-call budget one call at a time; over cap the
+    caller falls back to the local brain / honest refusal. Attempts count
+    (not just successes) — the conservative direction for a wallet guard."""
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    if _NET_SPEND["day"] != today:
+        _NET_SPEND.update(day=today, calls=0)
+    if _NET_SPEND["calls"] >= NET_DAILY_CAP:
+        return False
+    _NET_SPEND["calls"] += 1
+    return True
+
+
+def _net_payload(question: str, prior: tuple[str, str] | None = None) -> dict:
+    """The wire body for one radio-shaped frontier call. Pure function so
+    the smoke suite can pin its exact shape without any network. `prior`
+    threads the last Q/A back as real conversation turns — that is the
+    whole multi-turn mechanism behind ?more."""
+    msgs = []
+    if prior:
+        msgs += [{"role": "user", "content": prior[0]},
+                 {"role": "assistant", "content": prior[1]}]
+    msgs.append({"role": "user", "content": question})
+    return {"model": NET_MODEL,
+            "max_tokens": 1000,   # covers adaptive thinking + the sentence
+            "system": NET_SYSTEM,
+            "messages": msgs,
+            "output_config": {"effort": "low"}}
+
+
+def _ask_net(question: str, prior: tuple[str, str] | None = None) -> str | None:
     """One frontier-model call over the uplink, radio-shaped. Raw HTTP on
     purpose: this project keeps dependencies minimal and version-bounded, and
     the oracle already speaks plain requests to kiwix and Ollama. Returns None
     if the model refused or produced nothing — caller falls back to local."""
+    if not _net_budget_ok():
+        log(f"NET daily cap ({NET_DAILY_CAP}) reached; falling back local")
+        return None
     key = os.environ.get(NET_KEY_ENV)
     r = requests.post(
         NET_URL,
         headers={"x-api-key": key, "anthropic-version": "2023-06-01",
                  "content-type": "application/json"},
-        json={"model": NET_MODEL,
-              "max_tokens": 1000,   # covers adaptive thinking + the sentence
-              "system": ("You answer over a low-bandwidth field radio to "
-                         "someone off-grid. ONE plain sentence, max 160 "
-                         "characters, no markdown. If unsure, say so."),
-              "messages": [{"role": "user", "content": question}],
-              "output_config": {"effort": "low"}},
+        json=_net_payload(question, prior),
         timeout=NET_TIMEOUT_S)
     r.raise_for_status()
     d = r.json()
@@ -600,6 +656,12 @@ def _ask_net(question: str) -> str | None:
         return None
     text = " ".join(b.get("text", "") for b in d.get("content", [])
                     if b.get("type") == "text").strip()
+    if text.upper().startswith("FENCED"):
+        # The system prompt's backup fence fired — which means a fenced
+        # question got PAST the router. Worth a loud log line: that is a
+        # keyword gap to fix, not a reply to send.
+        log(f"NET fence echo tripped (router keyword gap?): {question!r}")
+        return None
     return text or None
 
 
@@ -905,7 +967,11 @@ def cmd_ask(question: str) -> str:
             if text:
                 if want_compact:
                     _REPLY["mode"] = "compact"
-                return f"NET{tag}: " + text
+                _LAST_ASK.update(q=question, a=text)
+                reply = f"NET{tag}: " + text
+                if len(reply) + 8 <= MAX_CHARS:   # teach the follow-up door
+                    reply += " | ?more"
+                return reply
         except requests.RequestException:
             _NET_STATE.update(ok=False, at=time.monotonic())
             log("NET call failed mid-flight; falling back to local model")
@@ -923,14 +989,63 @@ def cmd_ask(question: str) -> str:
         r.raise_for_status()
         if want_compact:
             _REPLY["mode"] = "compact"
-        return f"AI{tag}: " + r.json().get("response", "").strip()
+        text = r.json().get("response", "").strip()
+        _LAST_ASK.update(q=question, a=text)
+        reply = f"AI{tag}: " + text
+        if len(reply) + 8 <= MAX_CHARS:
+            reply += " | ?more"
+        return reply
+    except requests.RequestException:
+        return "AI backend unreachable."
+
+
+def cmd_more(_arg: str) -> str:
+    """?more — the multi-turn door: continue the last ?ask answer with the
+    next most useful details. The prior Q/A rides back to the model as real
+    conversation turns. Fence position unchanged: only questions the router
+    already cleared ever get cached here, so continuing one is equally
+    clear. One packet out, same as everything."""
+    if not _LAST_ASK["q"]:
+        return "Nothing to continue - ?ask <question> first."
+    follow = ("Continue: give the next most useful details beyond your "
+              "previous answer. Same limits.")
+    prior = (_LAST_ASK["q"], _LAST_ASK["a"])
+    if NET_BACKEND == "anthropic" and os.environ.get(NET_KEY_ENV) and net_up():
+        try:
+            text = _ask_net(follow, prior=prior)
+            if text:
+                # extend the memory so a second ?more knows both parts,
+                # capped so a long chain can't grow the payload unbounded
+                _LAST_ASK["a"] = (_LAST_ASK["a"] + " " + text)[-600:]
+                reply = "NET: " + text
+                if len(reply) + 8 <= MAX_CHARS:
+                    reply += " | ?more"
+                return reply
+        except requests.RequestException:
+            _NET_STATE.update(ok=False, at=time.monotonic())
+            log("NET ?more failed; trying local")
+    if OLLAMA_MODEL is None:
+        return "MORE: no uplink and no local model right now."
+    try:
+        r = requests.post(f"{OLLAMA_URL}/api/generate",
+                          json={"model": OLLAMA_MODEL,
+                                "prompt": (f"Earlier Q: {prior[0]}\n"
+                                           f"Your answer: {prior[1]}\n"
+                                           "Give the next most useful details "
+                                           "in ONE sentence, max 120 chars: "),
+                                "stream": False},
+                          timeout=120)
+        r.raise_for_status()
+        text = r.json().get("response", "").strip()
+        _LAST_ASK["a"] = (_LAST_ASK["a"] + " " + text)[-600:]
+        return "AI: " + text
     except requests.RequestException:
         return "AI backend unreachable."
 
 
 COMMANDS = {"?help": cmd_help, "?power": cmd_power, "?med": cmd_med,
-            "?find": cmd_find, "?ask": cmd_ask, "?net": cmd_net,
-            "?sms": cmd_sms, "?email": cmd_email}
+            "?find": cmd_find, "?ask": cmd_ask, "?more": cmd_more,
+            "?net": cmd_net, "?sms": cmd_sms, "?email": cmd_email}
 
 
 def handle(text: str) -> str:
