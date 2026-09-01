@@ -1154,7 +1154,12 @@ def main():
                  if SERIAL_PORT else meshtastic.serial_interface.SerialInterface())
     except Exception as e:
         print(f"Could not open a Meshtastic node ({e}).\n"
-              f"Is it plugged in via USB? Try: meshtastic --info", file=sys.stderr)
+              f"Is it plugged in via USB? PermissionError/Access-denied "
+              f"usually means something else already holds the port - "
+              f"another copy of this oracle, the Meshtastic web client, or "
+              f"the CLI. COM ports are one-owner-only: close the other one "
+              f"and start me again. Otherwise try: meshtastic --info",
+              file=sys.stderr)
         sys.exit(2)
 
     MY_NUM = iface.myInfo.my_node_num
