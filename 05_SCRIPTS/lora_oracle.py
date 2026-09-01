@@ -70,9 +70,14 @@ INVENTORY_CANDIDATES = [
     Path(__file__).resolve().parent.parent / "00_INVENTORY" / "INVENTORY.csv",
 ]
 
-# ?ask stays disabled until you set a model, e.g. "qwen2.5:3b" pulled in Ollama.
+# ?ask stays disabled until you name a model — via the environment, same
+# pattern as ORACLE_ALLOWLIST: the repo ships with every brain off, and an
+# operator turns theirs on at launch:
+#   ORACLE_OLLAMA_MODEL="qwen3:8b" python lora_oracle.py
+# (model must already be pulled in Ollama; unset = ?ask serves skills,
+# fence, and honest refusals only)
 OLLAMA_URL = "http://127.0.0.1:11434"
-OLLAMA_MODEL = None                # None = ?ask disabled (safe default)
+OLLAMA_MODEL = os.environ.get("ORACLE_OLLAMA_MODEL") or None
 
 # --- Uplink backend: ?ask via a frontier model WHEN the internet exists ----
 # The gateway play (00_DOCS/CAMP_DEPLOYMENT.md): a hiker with a $30 node and

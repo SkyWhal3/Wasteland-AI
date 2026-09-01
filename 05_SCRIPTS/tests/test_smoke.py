@@ -20,7 +20,7 @@ from pathlib import Path
 for _var in ("TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET",
              "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER",
              "ORACLE_SMTP_HOST", "ORACLE_SMTP_USER", "ORACLE_SMTP_PASS",
-             "ORACLE_ALLOWLIST"):
+             "ORACLE_ALLOWLIST", "ORACLE_OLLAMA_MODEL"):
     os.environ.pop(_var, None)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
