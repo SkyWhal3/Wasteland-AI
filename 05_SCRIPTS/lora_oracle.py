@@ -352,11 +352,25 @@ def _article_text(markup: str) -> tuple[str, str]:
     m = re.sub(r"<table\b.*?</table>", " ", m, flags=re.S | re.I)
     m = re.sub(r'<div\b[^>]*class="[^"]*(?:thumb|toc|gallery|infobox|navbox)'
                r'[^"]*"[^>]*>.*?</div>', " ", m, flags=re.S | re.I)
-    for sec in ("Management", "Treatment"):
-        hit = re.search(rf"<h[1-4][^>]*>(?:\s|<[^>]+>)*{sec}\b", m,
-                        flags=re.S | re.I)
-        if hit:
-            return f"§{sec.upper()}", _strip_html(m[hit.end():])
+    # WikEM's action sections wear several names ("General Management",
+    # "Application of Tourniquet", "Treatment"...): list every heading with
+    # its position, then take the best keyword match, bounded at the NEXT
+    # heading so the window never pages into See Also / References.
+    heads = [(h.start(), h.end(), _strip_html(h.group(2)))
+             for h in re.finditer(r"<h([12])[^>]*>(.*?)</h\1>",
+                                  m, flags=re.S | re.I)]
+    # Application outranks Treatment: on device articles (tourniquet) the
+    # "Treatment" substring also lives in "Removal at Medical Treatment",
+    # and the field reader wants the thing APPLIED before removed.
+    for kw in ("Management", "Application", "Treatment", "Technique",
+               "Procedure"):
+        for i, (_, h_end, h_text) in enumerate(heads):
+            if kw.lower() in h_text.lower():
+                seg_end = heads[i + 1][0] if i + 1 < len(heads) else len(m)
+                text = _strip_html(m[h_end:seg_end])
+                if len(text) >= 20:
+                    return f"§{kw.upper()}", text
+                # a heading with no body under it is a stub — keep looking
     return "", _strip_html(m)
 
 
@@ -421,13 +435,46 @@ def _kiwix_article_html(book: str, path: str) -> str | None:
     return None
 
 
+def _page_window(snippet: str, room: int, page_no: int) -> tuple[str, int, int]:
+    """Verbatim window N for '?med burn p2'. Pages are WALKED, not gridded:
+    each page ends on a sentence boundary (or at worst a word boundary) and
+    the next begins exactly where the last ended, so no characters ever
+    fall into the crack between pages. Returns (body, page, total)."""
+    room = max(room, 40)
+    pages: list[str] = []
+    rest = snippet
+    while rest:
+        if len(rest) <= room:
+            pages.append(rest)
+            break
+        body = rest[:room]
+        cut = body.rfind(". ")
+        if cut >= room // 2:
+            body = body[:cut + 1]
+        elif " " in body:
+            body = body[:body.rindex(" ")]
+        if not body:                      # unbreakable blob — take the slice
+            body = rest[:room]
+        pages.append(body)
+        rest = rest[len(body):].lstrip()
+    total = max(1, len(pages))
+    page_no = min(max(1, page_no), total)
+    return (pages[page_no - 1] if pages else ""), page_no, total
+
+
 def cmd_med(query: str) -> str:
     """RETRIEVAL ONLY. Finds the best-matching WikEM article via kiwix-serve's
-    /suggest endpoint and returns title + opening text + where to read it.
+    /suggest endpoint and returns title + a verbatim window + where to read
+    it. '?med burn p2' pages deeper into the same article, one packet per
+    request — the human pulls at reading pace, so depth never multi-parts.
     No language model is involved in this path, by design (manifest §9)."""
     _REPLY["mode"] = "ultra"      # medical NEVER multi-parts: one packet,
     if not query:                 # a title, and where to read the source
-        return "Usage: ?med <topic>   e.g. ?med tourniquet"
+        return "Usage: ?med <topic> [pN]   e.g. ?med tourniquet / ?med burn p2"
+    pm = re.match(r"^(.+?)\s+p(\d{1,2})$", query.strip(), flags=re.I)
+    page_no = 1
+    if pm:
+        query, page_no = pm.group(1), int(pm.group(2))
     book = _kiwix_book()
     try:
         r = requests.get(f"{KIWIX_URL}/suggest",
@@ -444,31 +491,34 @@ def cmd_med(query: str) -> str:
     if not hits:
         return f"WIKEM: no match for '{query}'. Try another term."
 
-    # 'value' is the plain title; 'label' can carry <b>…</b> highlight markup
-    # (we are NOT sending HTML over a 200-char radio message).
-    title = hits[0].get("value") or re.sub(r"<[^>]+>", "",
-                                           hits[0].get("label", query))
-    page = _kiwix_article_html(book, hits[0]["path"])
-    section, snippet = "", ""
-    if page:
-        section, snippet = _article_text(page)
-        # drop the leading title repetition if present
-        if not section and snippet.lower().startswith(title.lower()):
-            snippet = snippet[len(title):].lstrip(" -:")
-    head = f"WIKEM: {title.upper()}{(' ' + section) if section else ''} | "
+    # A stub/disambiguation page ("Tourniquet") often outranks the real
+    # article ("Extremity tourniquet"): scan the top suggestions and serve
+    # the first whose article HAS a Management/Treatment section, falling
+    # back to the first fetchable hit. The served title is displayed, so
+    # the reader always sees exactly which article they are getting.
+    # ('value' is the plain title; 'label' can carry <b>…</b> markup we
+    # are NOT sending over a 200-char radio message.)
+    title, section, snippet = "", "", ""
+    for h in hits[:3]:
+        t = h.get("value") or re.sub(r"<[^>]+>", "", h.get("label", query))
+        page = _kiwix_article_html(book, h["path"])
+        if not page:
+            continue
+        sec_i, snip_i = _article_text(page)
+        if not title or sec_i:
+            title, section, snippet = t, sec_i, snip_i
+        if sec_i:
+            break
+    if not title:
+        return f"WIKEM: article fetch failed for '{query}'."
+    # drop the leading title repetition if present
+    if not section and snippet.lower().startswith(title.lower()):
+        snippet = snippet[len(title):].lstrip(" -:")
+    base_head = f"WIKEM: {title.upper()}{(' ' + section) if section else ''}"
     tail = " | FULL TEXT AT NODE"
-    room = MAX_CHARS - len(head) - len(tail)
-    body = snippet[:max(room, 0)]
-    if len(snippet) > len(body):
-        # we truncated — end cleanly. Sentence boundary when the window's
-        # back half has one; otherwise at least never mid-word: a verbatim
-        # medical window must not cut a number or unit in its final token
-        # (WikEM management sections are bullet-styled and period-free).
-        cut = body.rfind(". ")
-        if cut >= room // 2:
-            body = body[:cut + 1]
-        elif " " in body:
-            body = body[:body.rindex(" ")]
+    room = MAX_CHARS - len(base_head) - 9 - len(tail)   # 9 = " 12/34 | "
+    body, page_no, total = _page_window(snippet, room, page_no)
+    head = f"{base_head} {page_no}/{total} | " if total > 1 else f"{base_head} | "
     return head + body + tail
 
 

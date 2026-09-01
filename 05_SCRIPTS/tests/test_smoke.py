@@ -48,12 +48,34 @@ with tempfile.TemporaryDirectory() as td:
             '<div class="thumbcaption">Cross-sectional anatomy of burns</div>'
             '</div></div><p>Background prose here.</p>'
             '<h2><span class="mw-headline" id="Management">Management</span></h2>'
-            '<p>Cool the burn. Remove rings.</p>')
+            '<p>Cool the burn. Remove rings.</p>'
+            '<h2>References</h2><p>License boilerplate junk.</p>')
     sec, txt = lora_oracle._article_text(fake)
     assert sec.endswith("MANAGEMENT") and txt.startswith("Cool the burn"), (sec, txt)
+    assert "junk" not in txt, "the section window must stop at the next heading"
     fake2 = '<div class="thumbcaption">Anatomy diagram</div><p>Body text.</p>'
     sec2, txt2 = lora_oracle._article_text(fake2)
     assert sec2 == "" and "Anatomy" not in txt2 and "Body text." in txt2, txt2
+    fake3 = ('<h1>T</h1><h2>General Management</h2><p>Warm the core.</p>'
+             '<h2>See Also</h2><p>x</p>')
+    sec3, txt3 = lora_oracle._article_text(fake3)
+    assert sec3 == "§MANAGEMENT" and txt3.strip() == "Warm the core.", (sec3, txt3)
+
+    # ?med paging: walked pages, nothing lost in the cracks, clamped pages
+    long_text = ("Alpha beta gamma. " * 30).strip()
+    parts, n = [], 1
+    while True:
+        b, p, t = lora_oracle._page_window(long_text, 100, n)
+        parts.append(b)
+        if p == t:
+            break
+        n += 1
+    assert " ".join(" ".join(parts).split()) == long_text, \
+        "walking the pages must reconstruct the article verbatim"
+    assert all(b == b.strip() and b in long_text for b in parts)
+    b9, p9, t9 = lora_oracle._page_window(long_text, 100, 99)
+    assert (p9, t9) == (t, t), "page past the end clamps to the last page"
+    assert lora_oracle._page_window("short.", 100, 3) == ("short.", 1, 1)
 
     # ORACLE_ALLOWLIST parsing: !hex, 0xhex, decimal, "*", unset
     assert lora_oracle._parse_allowlist(None) is None
